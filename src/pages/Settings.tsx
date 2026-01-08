@@ -7,9 +7,10 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Clock, Moon, Sun, User, Bell, BellOff, Check, RefreshCw } from "lucide-react";
+import { Clock, Moon, Sun, User, Bell, BellOff, RefreshCw, Smartphone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useNativePushNotifications } from "@/hooks/useNativePushNotifications";
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -31,13 +32,19 @@ const Settings = () => {
     unsubscribeFromPush,
   } = useNotifications();
 
+  const {
+    isNative,
+    isRegistered: isNativeRegistered,
+    registerForPush: registerNativePush,
+    unregisterFromPush: unregisterNativePush,
+  } = useNativePushNotifications();
+
   useEffect(() => {
     loadSettings();
     const savedTheme = localStorage.getItem("theme") as "light" | "dark" || "dark";
     setTheme(savedTheme);
     document.documentElement.classList.toggle("dark", savedTheme === "dark");
     
-    // Load notification preference from localStorage
     const savedNotifPref = localStorage.getItem("notificationsEnabled");
     if (savedNotifPref !== null) {
       setNotificationsEnabled(savedNotifPref === "true");
@@ -113,26 +120,31 @@ const Settings = () => {
   };
 
   const handlePushToggle = async (enabled: boolean) => {
-    if (enabled) {
-      await subscribeToPush();
+    if (isNative) {
+      if (enabled) {
+        await registerNativePush();
+      } else {
+        await unregisterNativePush();
+      }
     } else {
-      await unsubscribeFromPush();
+      if (enabled) {
+        await subscribeToPush();
+      } else {
+        await unsubscribeFromPush();
+      }
     }
   };
 
   const handleDebugPush = async () => {
     try {
-      // Check service worker
       const swReg = await navigator.serviceWorker.ready;
       console.log("Service Worker ready:", swReg);
       toast.info("Service Worker: Ready ✓");
       
-      // Check existing subscription
       const existingSub = await swReg.pushManager.getSubscription();
       console.log("Existing subscription:", existingSub);
       toast.info(existingSub ? "Existing subscription found" : "No existing subscription");
       
-      // Check permission state
       const permState = await swReg.pushManager.permissionState({ userVisibleOnly: true });
       console.log("Push permission state:", permState);
       toast.info(`Push permission: ${permState}`);
@@ -256,11 +268,13 @@ const Settings = () => {
           </CardContent>
         </Card>
 
-        {isSupported && (
+        {(isSupported || isNative) && (
           <Card>
             <CardHeader>
               <CardTitle className="font-heading flex items-center gap-2">
-                {permission === "granted" ? (
+                {isNative ? (
+                  <Smartphone className="h-5 w-5 text-success" />
+                ) : permission === "granted" ? (
                   <Bell className="h-5 w-5 text-success" />
                 ) : permission === "denied" ? (
                   <BellOff className="h-5 w-5 text-destructive" />
@@ -274,7 +288,36 @@ const Settings = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {permission === "granted" ? (
+              {isNative ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="native-push-toggle" className="text-base flex items-center gap-2">
+                        <Smartphone className="h-4 w-4" />
+                        Native Push Notifications
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        Receive notifications directly on your device
+                      </p>
+                    </div>
+                    <Switch
+                      id="native-push-toggle"
+                      checked={isNativeRegistered}
+                      onCheckedChange={handlePushToggle}
+                    />
+                  </div>
+
+                  <div className="text-sm text-muted-foreground space-y-1 border-t pt-4">
+                    <p>You'll receive notifications for:</p>
+                    <ul className="list-disc list-inside ml-2 space-y-1">
+                      <li>Check-in reminders during work hours</li>
+                      <li>Tasks due today</li>
+                      <li>Overdue task alerts</li>
+                      <li>Upcoming task reminders</li>
+                    </ul>
+                  </div>
+                </div>
+              ) : permission === "granted" ? (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
@@ -290,7 +333,7 @@ const Settings = () => {
                     />
                   </div>
                   
-                   {notificationsEnabled && (
+                  {notificationsEnabled && (
                     <>
                       <div className="flex items-center justify-between border-t pt-4">
                         <div className="space-y-0.5">
@@ -309,8 +352,7 @@ const Settings = () => {
 
                       {!isPushSupported && (
                         <p className="text-sm text-muted-foreground">
-                          Push subscriptions aren’t supported in this environment. If you’re testing inside the native Android app,
-                          Web Push won’t work—use an installable web app (PWA) for Web Push, or set up native push via Firebase.
+                          Push subscriptions aren't supported in this environment.
                         </p>
                       )}
 
