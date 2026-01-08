@@ -30,6 +30,9 @@ interface UseNotificationsReturn {
 const VAPID_PUBLIC_KEY_RAW = (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) ?? "";
 const VAPID_PUBLIC_KEY = VAPID_PUBLIC_KEY_RAW.trim().replace(/^"|"$/g, "");
 
+// Avoid attaching duplicate message listeners when this hook is used in multiple places.
+let swMessageListenerAttached = false;
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -110,7 +113,7 @@ export const useNotifications = (): UseNotificationsReturn => {
       // Register service worker
       navigator.serviceWorker
         .register("/sw.js")
-        .then((registration) => {
+        .then(async (registration) => {
           console.log("Service Worker registered:", registration);
           setSwRegistration(registration);
 
@@ -119,36 +122,37 @@ export const useNotifications = (): UseNotificationsReturn => {
             return;
           }
 
-          // Check if already subscribed
-          navigator.serviceWorker.ready
-            .then((readyReg) => readyReg.pushManager.getSubscription())
-            .then((subscription) => {
-              setIsPushSubscribed(!!subscription);
-            })
-            .catch((error) => {
-              console.warn("Push subscription check failed (push may be unsupported):", error);
-              setIsPushSupported(false);
-              setIsPushSubscribed(false);
-            });
+          // Check if already subscribed (use the same registration we just got)
+          try {
+            const subscription = await registration.pushManager.getSubscription();
+            setIsPushSubscribed(!!subscription);
+          } catch (error) {
+            // Don't mark push as unsupported just because this check failed once.
+            console.warn("Push subscription check failed:", error);
+            setIsPushSubscribed(false);
+          }
         })
         .catch((error) => {
           console.error("Service Worker registration failed:", error);
         });
 
-      // Listen for messages from service worker
-      navigator.serviceWorker.addEventListener("message", (event) => {
-        if (event.data.type === "NOTIFICATION_CLICK") {
-          // Handle notification click actions
-          const { action, data } = event.data;
+      // Listen for messages from service worker (attach once)
+      if (!swMessageListenerAttached) {
+        swMessageListenerAttached = true;
+        navigator.serviceWorker.addEventListener("message", (event) => {
+          if (event.data.type === "NOTIFICATION_CLICK") {
+            // Handle notification click actions
+            const { action, data } = event.data;
 
-          if (data.type === "check-in" && action === "checkin") {
-            // Dispatch custom event for check-in
-            window.dispatchEvent(new CustomEvent("open-checkin"));
-          } else if (data.type === "task-reminder" && action === "view") {
-            // Navigate to task - handled by URL in sw.js
+            if (data.type === "check-in" && action === "checkin") {
+              // Dispatch custom event for check-in
+              window.dispatchEvent(new CustomEvent("open-checkin"));
+            } else if (data.type === "task-reminder" && action === "view") {
+              // Navigate to task - handled by URL in sw.js
+            }
           }
-        }
-      });
+        });
+      }
     } else {
       setPermission("unsupported");
       setIsPushSupported(false);
@@ -269,10 +273,25 @@ export const useNotifications = (): UseNotificationsReturn => {
 
       // Subscribe to push
       console.log("Attempting to subscribe to push...");
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: validation.bytes,
-      });
+
+      const subscribeOnce = () =>
+        registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: validation.bytes,
+        });
+
+      let subscription: PushSubscription;
+      try {
+        subscription = await subscribeOnce();
+      } catch (e) {
+        // In some environments this error can be transient (push service hiccup). Retry once.
+        if (e instanceof DOMException && e.name === "AbortError") {
+          await new Promise((r) => setTimeout(r, 1200));
+          subscription = await subscribeOnce();
+        } else {
+          throw e;
+        }
+      }
 
       console.log("Push subscription created:", subscription.endpoint);
 
@@ -373,23 +392,24 @@ export const useNotifications = (): UseNotificationsReturn => {
   }, []);
 
   const unsubscribeFromPush = useCallback(async (): Promise<boolean> => {
-    if (!swRegistration) {
-      return false;
-    }
-
     try {
-      const subscription = await swRegistration.pushManager.getSubscription();
+      // Fall back to the ready registration in case this hook instance mounted before registration finished.
+      const registration = swRegistration ?? (await navigator.serviceWorker.ready);
+
+      const subscription = await registration.pushManager.getSubscription();
       if (subscription) {
         await subscription.unsubscribe();
 
         // Remove from database
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (user) {
           await supabase
-            .from('push_subscriptions')
+            .from("push_subscriptions")
             .delete()
-            .eq('user_id', user.id)
-            .eq('endpoint', subscription.endpoint);
+            .eq("user_id", user.id)
+            .eq("endpoint", subscription.endpoint);
         }
       }
 
