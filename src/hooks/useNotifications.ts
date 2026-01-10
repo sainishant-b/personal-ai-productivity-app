@@ -140,7 +140,17 @@ export const useNotifications = (): UseNotificationsReturn => {
   useEffect(() => {
     // Check if notifications are supported
     const supported = "Notification" in window && "serviceWorker" in navigator;
-    const pushSupported = supported && "PushManager" in window;
+
+    let isEmbedded = false;
+    try {
+      isEmbedded = window.self !== window.top;
+    } catch {
+      // Cross-origin access => treat as embedded
+      isEmbedded = true;
+    }
+
+    // Many Chromium browsers block PushManager.subscribe() from iframes.
+    const pushSupported = supported && "PushManager" in window && !isEmbedded;
 
     setIsSupported(supported);
     setIsPushSupported(pushSupported);
@@ -255,6 +265,21 @@ export const useNotifications = (): UseNotificationsReturn => {
   }, []);
 
   const doSubscribeToPush = async (): Promise<boolean> => {
+    // Push subscriptions are blocked in iframes in Chromium-based browsers (Chrome/Edge/Brave).
+    let isEmbedded = false;
+    try {
+      isEmbedded = window.self !== window.top;
+    } catch {
+      isEmbedded = true;
+    }
+
+    if (isEmbedded) {
+      toast.error("Push notifications must be enabled when the app is opened directly (not inside the embedded preview). Open the app in a new tab and try again.", {
+        duration: 8000,
+      });
+      return false;
+    }
+
     // Web Push requires PushManager (not available in all environments, especially some Android WebViews).
     if (!("PushManager" in window)) {
       toast.error("Push notifications aren't supported on this device/browser");

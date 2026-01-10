@@ -21,6 +21,14 @@ const Settings = () => {
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
+  const isEmbeddedPreview = (() => {
+    try {
+      return window.self !== window.top;
+    } catch {
+      return true;
+    }
+  })();
+
   const {
     permission,
     isSupported,
@@ -393,16 +401,30 @@ const Settings = () => {
                         <Switch
                           id="push-toggle"
                           checked={isPushSubscribed}
-                          disabled={!isPushSupported}
+                          disabled={!isPushSupported || isEmbeddedPreview}
                           onCheckedChange={handlePushToggle}
                         />
                       </div>
 
-                      {!isPushSupported && (
+                      {isEmbeddedPreview ? (
+                        <div className="text-sm text-muted-foreground">
+                          Push subscriptions can’t be enabled inside the embedded preview. Open this page in a new tab, then toggle Push Notifications.
+                          <div className="mt-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => window.open(window.location.href, "_blank", "noopener,noreferrer")}
+                            >
+                              Open in new tab
+                            </Button>
+                          </div>
+                        </div>
+                      ) : !isPushSupported ? (
                         <p className="text-sm text-muted-foreground">
                           Push subscriptions aren't supported in this environment.
                         </p>
-                      )}
+                      ) : null}
 
                       <div className="text-sm text-muted-foreground space-y-1 border-t pt-4">
                         <p>You'll receive notifications for:</p>
