@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -92,12 +92,15 @@ function isCapacitorNative(): boolean {
   return false;
 }
 
+// Prevent concurrent subscribe/unsubscribe operations
+let isProcessingPush = false;
+
 export const useNotifications = (): UseNotificationsReturn => {
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">("default");
   const [isSupported, setIsSupported] = useState(false);
   const [isPushSupported, setIsPushSupported] = useState(false);
   const [isPushSubscribed, setIsPushSubscribed] = useState(false);
-  const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
+  const swRegistrationRef = useRef<ServiceWorkerRegistration | null>(null);
 
   useEffect(() => {
     // Check if notifications are supported
@@ -115,7 +118,7 @@ export const useNotifications = (): UseNotificationsReturn => {
         .register("/sw.js")
         .then(async (registration) => {
           console.log("Service Worker registered:", registration);
-          setSwRegistration(registration);
+          swRegistrationRef.current = registration;
 
           if (!pushSupported) {
             setIsPushSubscribed(false);
@@ -187,6 +190,20 @@ export const useNotifications = (): UseNotificationsReturn => {
   }, [isSupported]);
 
   const subscribeToPush = useCallback(async (): Promise<boolean> => {
+    if (isProcessingPush) {
+      console.log("Push operation already in progress");
+      return false;
+    }
+    isProcessingPush = true;
+
+    try {
+      return await doSubscribeToPush();
+    } finally {
+      isProcessingPush = false;
+    }
+  }, []);
+
+  const doSubscribeToPush = async (): Promise<boolean> => {
     // Web Push requires PushManager (not available in all environments, especially some Android WebViews).
     if (!("PushManager" in window)) {
       toast.error("Push notifications aren't supported on this device/browser");
@@ -222,14 +239,19 @@ export const useNotifications = (): UseNotificationsReturn => {
       // Get the session first (more reliable than getUser for checking auth state)
       const {
         data: { session },
+        error: sessionError,
       } = await supabase.auth.getSession();
+      console.log("Session check:", session ? "found" : "null", sessionError ? `error: ${sessionError.message}` : "");
       let user = session?.user;
 
       if (!user) {
         // Try refreshing the session once before giving up
+        console.log("No session, attempting refresh...");
         const {
           data: { session: refreshedSession },
+          error: refreshError,
         } = await supabase.auth.refreshSession();
+        console.log("Refresh result:", refreshedSession ? "success" : "failed", refreshError ? `error: ${refreshError.message}` : "");
         user = refreshedSession?.user ?? null;
         if (!user) {
           toast.error("You must be logged in to enable push notifications");
@@ -273,6 +295,9 @@ export const useNotifications = (): UseNotificationsReturn => {
 
       // Subscribe to push
       console.log("Attempting to subscribe to push...");
+      console.log("VAPID key length:", VAPID_PUBLIC_KEY.length);
+      console.log("VAPID key (first 20 chars):", VAPID_PUBLIC_KEY.substring(0, 20));
+      console.log("VAPID key validation passed, bytes length:", validation.bytes.length);
 
       const subscribeOnce = () =>
         registration.pushManager.subscribe({
@@ -281,16 +306,40 @@ export const useNotifications = (): UseNotificationsReturn => {
         });
 
       let subscription: PushSubscription;
-      try {
-        subscription = await subscribeOnce();
-      } catch (e) {
-        // In some environments this error can be transient (push service hiccup). Retry once.
-        if (e instanceof DOMException && e.name === "AbortError") {
-          await new Promise((r) => setTimeout(r, 1200));
+      const MAX_RETRIES = 3;
+      let lastError: unknown = null;
+      
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          console.log(`Push subscription attempt ${attempt}/${MAX_RETRIES}...`);
           subscription = await subscribeOnce();
-        } else {
+          console.log("Push subscription succeeded on attempt", attempt);
+          break;
+        } catch (e) {
+          lastError = e;
+          console.warn(`Push subscription attempt ${attempt} failed:`, e);
+          
+          // AbortError often means push service is temporarily unavailable
+          if (e instanceof DOMException && e.name === "AbortError") {
+            if (attempt < MAX_RETRIES) {
+              const delay = 1500 * attempt; // Exponential backoff: 1.5s, 3s, 4.5s
+              console.log(`Retrying in ${delay}ms...`);
+              await new Promise((r) => setTimeout(r, delay));
+              continue;
+            }
+          }
           throw e;
         }
+      }
+      
+      if (!subscription!) {
+        // All retries failed with AbortError
+        console.error("All push subscription attempts failed");
+        toast.error(
+          "Push service temporarily unavailable. This can happen on localhost or when the push service is busy. Try again in a few moments.",
+          { duration: 6000 }
+        );
+        return false;
       }
 
       console.log("Push subscription created:", subscription.endpoint);
@@ -357,10 +406,23 @@ export const useNotifications = (): UseNotificationsReturn => {
         }
 
         if (error.name === "AbortError") {
+          if (isCapacitorNative()) {
+            toast.error("Web Push isn't supported inside the native app. Use installable web app (PWA) for Web Push, or set up native push (Firebase).");
+            return false;
+          }
+          
+          // AbortError with "push service error" usually means:
+          // 1. VAPID key pair mismatch (public key doesn't match the private key)
+          // 2. Push service is temporarily unavailable
+          // 3. Testing on localhost with certain browser configurations
+          console.error("AbortError indicates push service rejection. Common causes:");
+          console.error("- VAPID key pair may be invalid or mismatched");
+          console.error("- Push service may be temporarily unavailable");
+          console.error("- Localhost testing may have limitations");
+          
           toast.error(
-            isCapacitorNative()
-              ? "Web Push isn't supported inside the native app. Use installable web app (PWA) for Web Push, or set up native push (Firebase)."
-              : "Push subscription was rejected by the browser. If you regenerated your push keys, clear site data (or disable notifications for this site) and try again."
+            "Push service rejected the subscription. This often happens on localhost or if VAPID keys are misconfigured. Try again or test on a deployed HTTPS site.",
+            { duration: 8000 }
           );
           return false;
         }
@@ -389,12 +451,18 @@ export const useNotifications = (): UseNotificationsReturn => {
       }
       return false;
     }
-  }, []);
+  };
 
   const unsubscribeFromPush = useCallback(async (): Promise<boolean> => {
+    if (isProcessingPush) {
+      console.log("Push operation already in progress");
+      return false;
+    }
+    isProcessingPush = true;
+
     try {
       // Fall back to the ready registration in case this hook instance mounted before registration finished.
-      const registration = swRegistration ?? (await navigator.serviceWorker.ready);
+      const registration = swRegistrationRef.current ?? (await navigator.serviceWorker.ready);
 
       const subscription = await registration.pushManager.getSubscription();
       if (subscription) {
@@ -420,8 +488,10 @@ export const useNotifications = (): UseNotificationsReturn => {
       console.error("Error unsubscribing from push:", error);
       toast.error("Failed to disable push notifications");
       return false;
+    } finally {
+      isProcessingPush = false;
     }
-  }, [swRegistration]);
+  }, []);
 
   const sendNotification = useCallback(async (options: NotificationOptions) => {
     if (!isSupported || permission !== "granted") {
