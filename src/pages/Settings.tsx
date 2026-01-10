@@ -155,6 +155,54 @@ const Settings = () => {
     }
   };
 
+  const handleResetPush = async () => {
+    try {
+      toast.info("Resetting push state...");
+      
+      // 1. Unsubscribe any existing push subscription
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) {
+        try {
+          const sub = await reg.pushManager.getSubscription();
+          if (sub) {
+            await sub.unsubscribe();
+            console.log("Unsubscribed from push");
+          }
+        } catch (e) {
+          console.warn("Error unsubscribing:", e);
+        }
+      }
+
+      // 2. Remove subscriptions from database for this user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase
+          .from("push_subscriptions")
+          .delete()
+          .eq("user_id", user.id);
+        console.log("Removed push subscriptions from database");
+      }
+
+      // 3. Unregister all app service workers
+      for (const reg of regs) {
+        const swUrl = reg.active?.scriptURL || reg.installing?.scriptURL || reg.waiting?.scriptURL || "";
+        if (swUrl.includes("/sw.js")) {
+          await reg.unregister();
+          console.log("Unregistered service worker:", swUrl);
+        }
+      }
+
+      // 4. Re-register fresh service worker
+      await navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" });
+      console.log("Re-registered service worker");
+
+      toast.success("Push state reset! Toggle Push Notifications on to re-subscribe.");
+    } catch (error) {
+      console.error("Reset push error:", error);
+      toast.error(`Reset failed: ${error instanceof Error ? error.message : "Unknown"}`);
+    }
+  };
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
@@ -368,6 +416,9 @@ const Settings = () => {
                       <div className="flex gap-2 flex-wrap">
                         <Button onClick={handleTestNotification} variant="outline" className="w-full md:w-auto">
                           Send Test Notification
+                        </Button>
+                        <Button onClick={handleResetPush} variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/10">
+                          Reset Push State
                         </Button>
                         <Button onClick={handleDebugPush} variant="ghost" size="sm" className="text-muted-foreground">
                           Debug Push Status
