@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ import MobileStatsBar from "@/components/MobileStatsBar";
 import { useCheckInScheduler } from "@/hooks/useCheckInScheduler";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useTaskReminders } from "@/hooks/useTaskReminders";
+import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
+import { useLocalNotifications } from "@/hooks/useLocalNotifications";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -28,6 +30,7 @@ const Dashboard = () => {
   const [showNotificationPrompt, setShowNotificationPrompt] = useState(true);
   
   const { permission } = useNotifications();
+  const { hasPermission } = useLocalNotifications();
 
   const checkInQuestions = [
     "What are you working on right now?",
@@ -49,7 +52,26 @@ const Dashboard = () => {
     }
   });
 
+  // Set up notification scheduler for native scheduled notifications
+  const { scheduleSmartTaskReminders, cancelTaskReminder } = useNotificationScheduler({
+    profile,
+    tasks,
+    enabled: hasPermission,
+  });
+
   useTaskReminders({ tasks, enabled: permission === "granted" });
+
+  // Handler for scheduling smart reminders from AI recommendations
+  const handleAIRecommendationsLoaded = useCallback((recommendations: any[]) => {
+    if (recommendations && recommendations.length > 0 && hasPermission) {
+      scheduleSmartTaskReminders(recommendations);
+    }
+  }, [hasPermission, scheduleSmartTaskReminders]);
+  
+  // Cancel task reminder when task is completed
+  const handleTaskCompleted = useCallback((taskId: string) => {
+    cancelTaskReminder(taskId);
+  }, [cancelTaskReminder]);
   
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -136,7 +158,13 @@ const Dashboard = () => {
       .eq("id", taskId);
     
     if (error) toast.error("Failed to update task");
-    else if (newStatus === "completed") toast.success("Task completed");
+    else {
+      if (newStatus === "completed") {
+        toast.success("Task completed");
+        // Cancel any pending notification for this task
+        handleTaskCompleted(taskId);
+      }
+    }
     
     fetchTasks();
   };

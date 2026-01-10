@@ -11,6 +11,7 @@ import { Clock, Moon, Sun, User, Bell, BellOff, RefreshCw, Smartphone } from "lu
 import { useNavigate } from "react-router-dom";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useNativePushNotifications } from "@/hooks/useNativePushNotifications";
+import { NotificationSettingsCard } from "@/components/NotificationSettingsCard";
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -473,6 +474,9 @@ const Settings = () => {
             </CardContent>
           </Card>
         )}
+
+        {/* Scheduled Notifications Settings */}
+        <NotificationSettingsCard />
 
         <div className="flex justify-end">
           <Button onClick={handleSave} disabled={loading} size="lg">
