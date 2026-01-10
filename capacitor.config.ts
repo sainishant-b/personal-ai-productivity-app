@@ -13,6 +13,14 @@ const config: CapacitorConfig = {
     SplashScreen: {
       launchAutoHide: true,
       backgroundColor: '#000000'
+    },
+    PushNotifications: {
+      presentationOptions: ['badge', 'sound', 'alert']
+    },
+    LocalNotifications: {
+      smallIcon: 'ic_launcher',
+      iconColor: '#6366f1',
+      sound: 'default'
     }
   },
   android: {
