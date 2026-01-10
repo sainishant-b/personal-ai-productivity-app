@@ -1,4 +1,4 @@
-package app.lovable.ca8e63ecc375418dbcdd5673590b80ff;
+package ai.productivity;
 
 import com.getcapacitor.BridgeActivity;
 

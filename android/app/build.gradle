@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "app.lovable.ca8e63ecc375418dbcdd5673590b80ff"
+    namespace = "ai.productivity"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "app.lovable.ca8e63ecc375418dbcdd5673590b80ff"
+        applicationId "ai.productivity"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
