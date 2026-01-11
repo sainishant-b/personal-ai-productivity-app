@@ -6,16 +6,25 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface UseNativePushReturn {
   isNative: boolean;
+  isIOS: boolean;
+  isAndroid: boolean;
   isRegistered: boolean;
-  fcmToken: string | null;
+  pushToken: string | null;
   registerForPush: () => Promise<boolean>;
   unregisterFromPush: () => Promise<boolean>;
 }
 
 export const useNativePushNotifications = (): UseNativePushReturn => {
   const [isNative] = useState(() => Capacitor.isNativePlatform());
+  const [isIOS] = useState(() => Capacitor.getPlatform() === "ios");
+  const [isAndroid] = useState(() => Capacitor.getPlatform() === "android");
   const [isRegistered, setIsRegistered] = useState(false);
-  const [fcmToken, setFcmToken] = useState<string | null>(null);
+  const [pushToken, setPushToken] = useState<string | null>(null);
+
+  // Get the appropriate token prefix based on platform
+  const getTokenPrefix = useCallback(() => {
+    return isIOS ? "apns:" : "fcm:";
+  }, [isIOS]);
 
   useEffect(() => {
     if (!isNative) return;
@@ -23,47 +32,52 @@ export const useNativePushNotifications = (): UseNativePushReturn => {
     const setupListeners = async () => {
       // Listen for registration success
       await PushNotifications.addListener("registration", async (token: Token) => {
-        console.log("Push registration success, FCM token:", token.value);
-        setFcmToken(token.value);
+        const platform = isIOS ? "iOS (APNs)" : "Android (FCM)";
+        console.log(`Push registration success on ${platform}, token:`, token.value);
+        setPushToken(token.value);
         setIsRegistered(true);
 
-        // Save token to database
+        // Save token to database with platform-specific prefix
         try {
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
+            const tokenPrefix = isIOS ? "apns:" : "fcm:";
+            const endpoint = `${tokenPrefix}${token.value}`;
+            
             const { error } = await supabase
               .from("push_subscriptions")
               .upsert({
                 user_id: user.id,
-                endpoint: `fcm:${token.value}`,
-                p256dh_key: "native-fcm",
-                auth_key: "native-fcm",
+                endpoint: endpoint,
+                p256dh_key: `native-${isIOS ? "apns" : "fcm"}`,
+                auth_key: `native-${isIOS ? "apns" : "fcm"}`,
               }, {
                 onConflict: "user_id,endpoint",
               });
 
             if (error) {
-              console.error("Error saving FCM token:", error);
+              console.error("Error saving push token:", error);
             } else {
-              console.log("FCM token saved to database");
+              console.log(`${platform} token saved to database`);
             }
           }
         } catch (error) {
-          console.error("Error saving FCM token:", error);
+          console.error("Error saving push token:", error);
         }
       });
 
       // Listen for registration errors
       await PushNotifications.addListener("registrationError", (error) => {
         console.error("Push registration error:", error);
-        toast.error("Failed to register for push notifications");
+        const platform = isIOS ? "iOS" : "Android";
+        toast.error(`Failed to register for push notifications on ${platform}`);
       });
 
       // Listen for push notifications received while app is in foreground
       await PushNotifications.addListener("pushNotificationReceived", (notification: PushNotificationSchema) => {
         console.log("Push notification received:", notification);
         
-        // Show a toast since the notification won't show in foreground by default on some devices
+        // Show a toast since the notification won't show in foreground by default
         toast(notification.title || "Notification", {
           description: notification.body,
         });
@@ -90,16 +104,17 @@ export const useNativePushNotifications = (): UseNativePushReturn => {
         try {
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
+            const tokenPrefix = isIOS ? "apns:" : "fcm:";
             const { data: subs } = await supabase
               .from("push_subscriptions")
               .select("endpoint")
               .eq("user_id", user.id)
-              .like("endpoint", "fcm:%");
+              .like("endpoint", `${tokenPrefix}%`);
             
             if (subs && subs.length > 0) {
               setIsRegistered(true);
-              const token = subs[0].endpoint.replace("fcm:", "");
-              setFcmToken(token);
+              const token = subs[0].endpoint.replace(tokenPrefix, "");
+              setPushToken(token);
             }
           }
         } catch (error) {
@@ -113,7 +128,7 @@ export const useNativePushNotifications = (): UseNativePushReturn => {
     return () => {
       PushNotifications.removeAllListeners();
     };
-  }, [isNative]);
+  }, [isNative, isIOS]);
 
   const registerForPush = useCallback(async (): Promise<boolean> => {
     if (!isNative) {
@@ -130,7 +145,8 @@ export const useNativePushNotifications = (): UseNativePushReturn => {
       }
 
       if (permStatus.receive !== "granted") {
-        toast.error("Push notification permission denied");
+        const platform = isIOS ? "iOS" : "Android";
+        toast.error(`Push notification permission denied on ${platform}`);
         return false;
       }
 
@@ -143,7 +159,7 @@ export const useNativePushNotifications = (): UseNativePushReturn => {
       toast.error("Failed to enable push notifications");
       return false;
     }
-  }, [isNative]);
+  }, [isNative, isIOS]);
 
   const unregisterFromPush = useCallback(async (): Promise<boolean> => {
     if (!isNative) return false;
@@ -151,16 +167,17 @@ export const useNativePushNotifications = (): UseNativePushReturn => {
     try {
       // Remove from database
       const { data: { user } } = await supabase.auth.getUser();
-      if (user && fcmToken) {
+      if (user && pushToken) {
+        const tokenPrefix = isIOS ? "apns:" : "fcm:";
         await supabase
           .from("push_subscriptions")
           .delete()
           .eq("user_id", user.id)
-          .eq("endpoint", `fcm:${fcmToken}`);
+          .eq("endpoint", `${tokenPrefix}${pushToken}`);
       }
 
       setIsRegistered(false);
-      setFcmToken(null);
+      setPushToken(null);
       toast.success("Push notifications disabled");
       return true;
     } catch (error) {
@@ -168,12 +185,14 @@ export const useNativePushNotifications = (): UseNativePushReturn => {
       toast.error("Failed to disable push notifications");
       return false;
     }
-  }, [isNative, fcmToken]);
+  }, [isNative, isIOS, pushToken]);
 
   return {
     isNative,
+    isIOS,
+    isAndroid,
     isRegistered,
-    fcmToken,
+    pushToken,
     registerForPush,
     unregisterFromPush,
   };

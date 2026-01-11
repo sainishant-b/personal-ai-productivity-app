@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import MobileBottomNav from "./MobileBottomNav";
@@ -28,21 +29,38 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   // Hide bottom nav on auth page
   const showBottomNav = location.pathname !== "/auth";
+  
+  // Detect platform
+  const isIOS = Capacitor.getPlatform() === "ios";
+  const isAndroid = Capacitor.getPlatform() === "android";
+  const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
-    // Configure status bar for Android
+    // Configure status bar for iOS and Android
     const configureStatusBar = async () => {
+      if (!isNative) return;
+      
       try {
-        await StatusBar.setStyle({ style: Style.Dark });
-        await StatusBar.setBackgroundColor({ color: "#000000" });
-        await StatusBar.setOverlaysWebView({ overlay: false });
+        if (isIOS) {
+          // iOS status bar configuration
+          await StatusBar.setStyle({ style: Style.Dark });
+          // iOS doesn't support setBackgroundColor - it's controlled by the app's content
+          await StatusBar.setOverlaysWebView({ overlay: true });
+        } else if (isAndroid) {
+          // Android status bar configuration
+          await StatusBar.setStyle({ style: Style.Dark });
+          await StatusBar.setBackgroundColor({ color: "#000000" });
+          await StatusBar.setOverlaysWebView({ overlay: false });
+        }
       } catch (error) {
-        // Not running in Capacitor context, ignore
+        console.log("Status bar configuration not available:", error);
       }
     };
 
-    // Handle Android back button with React Router
+    // Handle back button (Android only - iOS uses swipe gestures)
     const setupBackButton = async () => {
+      if (!isAndroid) return;
+      
       try {
         await App.addListener("backButton", () => {
           // Check if on home/dashboard - exit app
@@ -54,7 +72,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           }
         });
       } catch (error) {
-        // Not running in Capacitor context, ignore
+        console.log("Back button handler not available:", error);
       }
     };
 
@@ -62,9 +80,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
     setupBackButton();
 
     return () => {
-      App.removeAllListeners().catch(() => {});
+      if (isNative) {
+        App.removeAllListeners().catch(() => {});
+      }
     };
-  }, [location.pathname, navigate]);
+  }, [location.pathname, navigate, isNative, isIOS, isAndroid]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -148,8 +168,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
     <div 
       className="min-h-screen bg-background flex flex-col"
       style={{ 
-        paddingTop: "env(safe-area-inset-top, 0px)",
-        paddingBottom: showBottomNav ? "calc(60px + env(safe-area-inset-bottom, 0px))" : "env(safe-area-inset-bottom, 0px)"
+        // iOS uses safe-area-inset for notch/Dynamic Island
+        paddingTop: isIOS ? "env(safe-area-inset-top, 0px)" : "env(safe-area-inset-top, 0px)",
+        paddingBottom: showBottomNav 
+          ? "calc(60px + env(safe-area-inset-bottom, 0px))" 
+          : "env(safe-area-inset-bottom, 0px)",
+        paddingLeft: "env(safe-area-inset-left, 0px)",
+        paddingRight: "env(safe-area-inset-right, 0px)",
       }}
     >
       {children}

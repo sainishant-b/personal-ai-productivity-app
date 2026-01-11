@@ -12,7 +12,9 @@ const config: CapacitorConfig = {
     },
     SplashScreen: {
       launchAutoHide: true,
-      backgroundColor: '#000000'
+      backgroundColor: '#000000',
+      launchShowDuration: 2000,
+      showSpinner: false
     },
     PushNotifications: {
       presentationOptions: ['badge', 'sound', 'alert']
@@ -28,6 +30,14 @@ const config: CapacitorConfig = {
     allowMixedContent: false,
     captureInput: true,
     webContentsDebuggingEnabled: false
+  },
+  ios: {
+    backgroundColor: '#000000',
+    contentInset: 'automatic',
+    allowsLinkPreview: true,
+    scrollEnabled: true,
+    limitsNavigationsToAppBoundDomains: false,
+    preferredContentMode: 'mobile'
   }
 };
 
