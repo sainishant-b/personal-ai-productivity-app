@@ -6,6 +6,7 @@
  * - Task duration
  * - Task category
  * - User energy patterns
+ * - User notification preferences
  */
 
 interface Task {
@@ -24,11 +25,36 @@ interface UserProfile {
   peak_energy_time?: string; // e.g., "morning", "afternoon", "evening"
 }
 
+export interface UserNotificationPreferences {
+  frequencyMultiplier: number; // 0.5 = less aggressive, 1 = normal, 2 = more aggressive
+  minimumLeadTime: number; // Minimum minutes before task to notify
+  disabledPriorities: ('high' | 'medium' | 'low')[]; // Priorities to disable notifications for
+  quietHoursStart: string;
+  quietHoursEnd: string;
+}
+
+export const DEFAULT_NOTIFICATION_PREFERENCES: UserNotificationPreferences = {
+  frequencyMultiplier: 1,
+  minimumLeadTime: 5,
+  disabledPriorities: [],
+  quietHoursStart: "22:00",
+  quietHoursEnd: "07:00",
+};
+
 export interface ScheduledNotificationTime {
   time: Date;
   reason: string;
   type: 'advance-notice' | 'reminder' | 'final-reminder' | 'overdue' | 'daily-summary';
   priority: 'high' | 'medium' | 'low';
+  content: NotificationContent;
+}
+
+export interface NotificationContent {
+  title: string;
+  body: string;
+  urgencyLevel: 'urgent' | 'normal' | 'low' | 'overdue';
+  timeRemaining?: string;
+  actionText?: string;
 }
 
 export interface NotificationSchedule {
@@ -99,6 +125,27 @@ function isWithinWorkHours(date: Date, profile: UserProfile): boolean {
 }
 
 /**
+ * Checks if a time falls within quiet hours
+ */
+function isInQuietHours(date: Date, prefs: UserNotificationPreferences): boolean {
+  const [startHour, startMin] = prefs.quietHoursStart.split(':').map(Number);
+  const [endHour, endMin] = prefs.quietHoursEnd.split(':').map(Number);
+  
+  const hour = date.getHours();
+  const minute = date.getMinutes();
+  const timeValue = hour * 60 + minute;
+  const quietStart = startHour * 60 + startMin;
+  const quietEnd = endHour * 60 + endMin;
+  
+  // Handle overnight quiet hours (e.g., 22:00 to 07:00)
+  if (quietStart > quietEnd) {
+    return timeValue >= quietStart || timeValue <= quietEnd;
+  }
+  
+  return timeValue >= quietStart && timeValue <= quietEnd;
+}
+
+/**
  * Adjusts notification time to fit within work hours for work tasks
  */
 function adjustToWorkHours(date: Date, profile: UserProfile, isWorkTask: boolean): Date {
@@ -120,19 +167,154 @@ function adjustToWorkHours(date: Date, profile: UserProfile, isWorkTask: boolean
 }
 
 /**
+ * Format time remaining in human-readable format
+ */
+function formatTimeRemaining(targetDate: Date, fromDate: Date = new Date()): string {
+  const diffMs = targetDate.getTime() - fromDate.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  
+  if (diffMins < 0) {
+    const overdueMins = Math.abs(diffMins);
+    const overdueHours = Math.floor(overdueMins / 60);
+    const overdueDays = Math.floor(overdueHours / 24);
+    
+    if (overdueDays > 0) {
+      return `Due ${overdueDays} day${overdueDays > 1 ? 's' : ''} ago`;
+    } else if (overdueHours > 0) {
+      return `Due ${overdueHours} hour${overdueHours > 1 ? 's' : ''} ago`;
+    } else {
+      return `Due ${overdueMins} minute${overdueMins > 1 ? 's' : ''} ago`;
+    }
+  }
+  
+  if (diffDays > 0) {
+    return `Due in ${diffDays} day${diffDays > 1 ? 's' : ''}`;
+  } else if (diffHours > 0) {
+    return `Due in ${diffHours} hour${diffHours > 1 ? 's' : ''}`;
+  } else if (diffMins > 0) {
+    return `Due in ${diffMins} minute${diffMins > 1 ? 's' : ''}`;
+  }
+  
+  return 'Due now';
+}
+
+/**
+ * Generate notification content based on priority and urgency
+ */
+function generateNotificationContent(
+  task: Task,
+  type: ScheduledNotificationTime['type'],
+  dueDate: Date | null,
+  existingOverdueReminders: number = 0
+): NotificationContent {
+  const timeRemaining = dueDate ? formatTimeRemaining(dueDate) : undefined;
+  
+  // HIGH PRIORITY notifications - Urgent tone
+  if (task.priority === 'high') {
+    switch (type) {
+      case 'advance-notice':
+        return {
+          title: `🔴 High priority task due soon!`,
+          body: `"${task.title}" - ${timeRemaining}`,
+          urgencyLevel: 'urgent',
+          timeRemaining,
+          actionText: 'Plan now',
+        };
+      case 'reminder':
+        return {
+          title: `⚠️ High priority: ${task.title}`,
+          body: timeRemaining || 'Action required',
+          urgencyLevel: 'urgent',
+          timeRemaining,
+          actionText: 'Start now',
+        };
+      case 'final-reminder':
+        return {
+          title: `🚨 Starting Soon: ${task.title}`,
+          body: `${timeRemaining} - This needs your attention now!`,
+          urgencyLevel: 'urgent',
+          timeRemaining,
+          actionText: 'Start immediately',
+        };
+      case 'overdue':
+        return {
+          title: `💪 Ready to tackle this?`,
+          body: `"${task.title}" - ${timeRemaining}. Reminder ${existingOverdueReminders + 1} of 3.`,
+          urgencyLevel: 'overdue',
+          timeRemaining,
+          actionText: 'Complete now',
+        };
+      case 'daily-summary':
+        return {
+          title: `🎯 High Priority: ${task.title}`,
+          body: 'Consider tackling this during your peak energy time',
+          urgencyLevel: 'urgent',
+          actionText: 'View task',
+        };
+    }
+  }
+  
+  // MEDIUM PRIORITY notifications - Gentle reminder tone
+  if (task.priority === 'medium') {
+    switch (type) {
+      case 'reminder':
+        return {
+          title: `📋 Reminder: ${task.title}`,
+          body: timeRemaining || 'Scheduled for today',
+          urgencyLevel: 'normal',
+          timeRemaining,
+          actionText: 'View',
+        };
+      case 'overdue':
+        return {
+          title: `💪 Ready to tackle this?`,
+          body: `"${task.title}" - ${timeRemaining}`,
+          urgencyLevel: 'overdue',
+          timeRemaining,
+          actionText: 'Complete',
+        };
+      default:
+        return {
+          title: `📋 ${task.title}`,
+          body: timeRemaining || 'Task reminder',
+          urgencyLevel: 'normal',
+          timeRemaining,
+        };
+    }
+  }
+  
+  // LOW PRIORITY / default
+  return {
+    title: `📌 ${task.title}`,
+    body: timeRemaining || 'Task reminder',
+    urgencyLevel: 'low',
+    timeRemaining,
+  };
+}
+
+/**
  * Main decision engine: Calculates notification schedule for a task
  */
 export function calculateNotificationSchedule(
   task: Task,
   profile: UserProfile,
-  existingOverdueReminders: number = 0
+  existingOverdueReminders: number = 0,
+  preferences: UserNotificationPreferences = DEFAULT_NOTIFICATION_PREFERENCES
 ): NotificationSchedule {
   const notifications: ScheduledNotificationTime[] = [];
   const now = new Date();
   const isWorkTask = task.category === 'work';
+  const priority = task.priority as 'high' | 'medium' | 'low';
   
   // No notifications for completed tasks
   if (task.status === 'completed') {
+    return { taskId: task.id, taskTitle: task.title, notifications: [] };
+  }
+
+  // Check if priority is disabled by user
+  if (preferences.disabledPriorities.includes(priority)) {
     return { taskId: task.id, taskTitle: task.title, notifications: [] };
   }
 
@@ -152,12 +334,14 @@ export function calculateNotificationSchedule(
       
       if (isWorkTask) {
         const adjustedTime = adjustToWorkHours(reminderTime, profile, true);
-        if (adjustedTime > now) {
+        if (adjustedTime > now && !isInQuietHours(adjustedTime, preferences)) {
+          const content = generateNotificationContent(task, 'daily-summary', null);
           notifications.push({
             time: adjustedTime,
             reason: 'High priority task without deadline - peak energy reminder',
             type: 'daily-summary',
             priority: 'high',
+            content,
           });
         }
       }
@@ -177,25 +361,47 @@ export function calculateNotificationSchedule(
   const isDueToday = dueDateStart.getTime() === todayStart.getTime();
   const specificTime = hasSpecificTime(dueDate);
 
+  // Helper to add notification if valid
+  const addNotification = (
+    time: Date, 
+    reason: string, 
+    type: ScheduledNotificationTime['type'],
+    priorityLevel: 'high' | 'medium' | 'low'
+  ) => {
+    const adjustedTime = adjustToWorkHours(time, profile, isWorkTask);
+    
+    // Skip if in quiet hours or before minimum lead time
+    if (isInQuietHours(adjustedTime, preferences)) return;
+    
+    const minLeadTime = new Date(now.getTime() + preferences.minimumLeadTime * 60 * 1000);
+    if (adjustedTime <= minLeadTime) return;
+    
+    const content = generateNotificationContent(task, type, dueDate, existingOverdueReminders);
+    
+    notifications.push({
+      time: adjustedTime,
+      reason,
+      type,
+      priority: priorityLevel,
+      content,
+    });
+  };
+
   // OVERDUE TASK HANDLING
   if (isOverdue) {
     if (task.priority === 'high') {
       // High priority overdue: Every 4 hours, max 3 per day
       if (existingOverdueReminders < 3) {
-        const nextReminder = new Date(now);
-        nextReminder.setHours(nextReminder.getHours() + 4);
+        const baseInterval = 4 * 60 * 60 * 1000; // 4 hours
+        const adjustedInterval = baseInterval / preferences.frequencyMultiplier;
+        const nextReminder = new Date(now.getTime() + adjustedInterval);
         
-        // Adjust to work hours for work tasks
-        const adjustedReminder = adjustToWorkHours(nextReminder, profile, isWorkTask);
-        
-        if (adjustedReminder > now) {
-          notifications.push({
-            time: adjustedReminder,
-            reason: `Overdue high priority - reminder ${existingOverdueReminders + 1} of 3`,
-            type: 'overdue',
-            priority: 'high',
-          });
-        }
+        addNotification(
+          nextReminder,
+          `Overdue high priority - reminder ${existingOverdueReminders + 1} of 3`,
+          'overdue',
+          'high'
+        );
       }
     } else if (task.priority === 'medium') {
       // Medium priority overdue: One reminder per day at 9am
@@ -206,16 +412,20 @@ export function calculateNotificationSchedule(
         reminderTime.setDate(reminderTime.getDate() + 1);
       }
       
-      notifications.push({
-        time: reminderTime,
-        reason: 'Overdue medium priority - daily reminder',
-        type: 'overdue',
-        priority: 'medium',
-      });
+      addNotification(
+        reminderTime,
+        'Overdue medium priority - daily reminder',
+        'overdue',
+        'medium'
+      );
     }
     
     return { taskId: task.id, taskTitle: task.title, notifications };
   }
+
+  // Apply frequency multiplier to notification count
+  const shouldAddExtraNotifications = preferences.frequencyMultiplier >= 1.5;
+  const shouldReduceNotifications = preferences.frequencyMultiplier <= 0.5;
 
   // HIGH PRIORITY NOTIFICATIONS
   if (task.priority === 'high') {
@@ -224,77 +434,90 @@ export function calculateNotificationSchedule(
     if (specificTime) {
       // Task WITH specific time
       
-      // 1. 24 hours before
-      const twentyFourHoursBefore = new Date(dueDate.getTime() - 24 * 60 * 60 * 1000);
-      if (twentyFourHoursBefore > now) {
-        const adjusted = adjustToWorkHours(twentyFourHoursBefore, profile, isWorkTask);
-        notifications.push({
-          time: adjusted,
-          reason: '24hr advance notice for high priority',
-          type: 'advance-notice',
-          priority: 'high',
-        });
+      // 1. 24 hours before (skip if reduced)
+      if (!shouldReduceNotifications) {
+        const twentyFourHoursBefore = new Date(dueDate.getTime() - 24 * 60 * 60 * 1000);
+        if (twentyFourHoursBefore > now) {
+          addNotification(
+            twentyFourHoursBefore,
+            '24hr advance notice for high priority',
+            'advance-notice',
+            'high'
+          );
+        }
       }
       
       // 2. 2 hours before
       const twoHoursBefore = new Date(dueDate.getTime() - 2 * 60 * 60 * 1000);
       if (twoHoursBefore > now) {
-        const adjusted = adjustToWorkHours(twoHoursBefore, profile, isWorkTask);
-        notifications.push({
-          time: adjusted,
-          reason: '2hr reminder before scheduled time',
-          type: 'reminder',
-          priority: 'high',
-        });
+        addNotification(
+          twoHoursBefore,
+          '2hr reminder before scheduled time',
+          'reminder',
+          'high'
+        );
       }
       
-      // 3. 15 min (or adjusted for duration) before
+      // 3. Final reminder (adjusted for duration)
       const finalReminder = new Date(dueDate.getTime() - leadTime * 60 * 1000);
       if (finalReminder > now) {
-        notifications.push({
-          time: finalReminder,
-          reason: `${leadTime}min final reminder`,
-          type: 'final-reminder',
-          priority: 'high',
-        });
+        addNotification(
+          finalReminder,
+          `${leadTime}min final reminder`,
+          'final-reminder',
+          'high'
+        );
+      }
+
+      // Extra notification for aggressive mode: 6 hours before
+      if (shouldAddExtraNotifications) {
+        const sixHoursBefore = new Date(dueDate.getTime() - 6 * 60 * 60 * 1000);
+        if (sixHoursBefore > now) {
+          addNotification(
+            sixHoursBefore,
+            '6hr early warning for high priority',
+            'reminder',
+            'high'
+          );
+        }
       }
     } else {
       // Task WITH date only (no specific time)
       // High: Notify at 9am, 2pm, 6pm on that day
-      const times = [
-        { hour: 9, minute: 0, label: 'morning' },
-        { hour: 14, minute: 0, label: 'afternoon' },
-        { hour: 18, minute: 0, label: 'evening' },
-      ];
+      const times = shouldReduceNotifications
+        ? [{ hour: 9, minute: 0, label: 'morning' }]
+        : [
+            { hour: 9, minute: 0, label: 'morning' },
+            { hour: 14, minute: 0, label: 'afternoon' },
+            { hour: 18, minute: 0, label: 'evening' },
+          ];
       
       for (const { hour, minute, label } of times) {
         const notifTime = new Date(dueDate);
         notifTime.setHours(hour, minute, 0, 0);
         
         if (notifTime > now) {
-          const adjusted = adjustToWorkHours(notifTime, profile, isWorkTask);
-          // Only add if still in future after adjustment
-          if (adjusted > now) {
-            notifications.push({
-              time: adjusted,
-              reason: `High priority due date - ${label} reminder`,
-              type: 'reminder',
-              priority: 'high',
-            });
-          }
+          addNotification(
+            notifTime,
+            `High priority due date - ${label} reminder`,
+            'reminder',
+            'high'
+          );
         }
       }
       
       // Also add 24hr advance if due date is tomorrow or later
-      const twentyFourHoursBefore = new Date(dueDate.getTime() - 24 * 60 * 60 * 1000);
-      twentyFourHoursBefore.setHours(9, 0, 0, 0);
-      if (twentyFourHoursBefore > now && !isDueToday) {
-        notifications.push({
-          time: twentyFourHoursBefore,
-          reason: '24hr advance notice for high priority',
-          type: 'advance-notice',
-          priority: 'high',
-        });
+      if (!shouldReduceNotifications) {
+        const twentyFourHoursBefore = new Date(dueDate.getTime() - 24 * 60 * 60 * 1000);
+        twentyFourHoursBefore.setHours(9, 0, 0, 0);
+        if (twentyFourHoursBefore > now && !isDueToday) {
+          addNotification(
+            twentyFourHoursBefore,
+            '24hr advance notice for high priority',
+            'advance-notice',
+            'high'
+          );
+        }
       }
     }
   }
@@ -305,13 +528,25 @@ export function calculateNotificationSchedule(
       // Task WITH specific time: Single notification 2 hours before
       const twoHoursBefore = new Date(dueDate.getTime() - 2 * 60 * 60 * 1000);
       if (twoHoursBefore > now) {
-        const adjusted = adjustToWorkHours(twoHoursBefore, profile, isWorkTask);
-        notifications.push({
-          time: adjusted,
-          reason: '2hr reminder for medium priority task',
-          type: 'reminder',
-          priority: 'medium',
-        });
+        addNotification(
+          twoHoursBefore,
+          '2hr reminder for medium priority task',
+          'reminder',
+          'medium'
+        );
+      }
+
+      // Extra for aggressive mode: 15 min final reminder
+      if (shouldAddExtraNotifications) {
+        const fifteenMinBefore = new Date(dueDate.getTime() - 15 * 60 * 1000);
+        if (fifteenMinBefore > now) {
+          addNotification(
+            fifteenMinBefore,
+            '15min final reminder for medium priority',
+            'final-reminder',
+            'medium'
+          );
+        }
       }
     } else {
       // Task WITH date only: One reminder at 9am on due date
@@ -319,15 +554,12 @@ export function calculateNotificationSchedule(
       reminderTime.setHours(9, 0, 0, 0);
       
       if (reminderTime > now) {
-        const adjusted = adjustToWorkHours(reminderTime, profile, isWorkTask);
-        if (adjusted > now) {
-          notifications.push({
-            time: adjusted,
-            reason: 'Medium priority due date - morning reminder',
-            type: 'reminder',
-            priority: 'medium',
-          });
-        }
+        addNotification(
+          reminderTime,
+          'Medium priority due date - morning reminder',
+          'reminder',
+          'medium'
+        );
       }
     }
   }
@@ -344,14 +576,16 @@ export function calculateNotificationSchedule(
 export function calculateAllNotificationSchedules(
   tasks: Task[],
   profile: UserProfile,
-  overdueReminderCounts: Record<string, number> = {}
+  overdueReminderCounts: Record<string, number> = {},
+  preferences: UserNotificationPreferences = DEFAULT_NOTIFICATION_PREFERENCES
 ): NotificationSchedule[] {
   return tasks
     .filter(task => task.status !== 'completed')
     .map(task => calculateNotificationSchedule(
       task, 
       profile, 
-      overdueReminderCounts[task.id] || 0
+      overdueReminderCounts[task.id] || 0,
+      preferences
     ))
     .filter(schedule => schedule.notifications.length > 0);
 }
@@ -379,4 +613,23 @@ export function getNotificationSummary(schedules: NotificationSchedule[]): {
   }
 
   return summary;
+}
+
+/**
+ * Check if a notification schedule needs updating based on task changes
+ */
+export function hasScheduleChanged(
+  oldTask: Task | null,
+  newTask: Task
+): boolean {
+  if (!oldTask) return true;
+  
+  return (
+    oldTask.due_date !== newTask.due_date ||
+    oldTask.priority !== newTask.priority ||
+    oldTask.status !== newTask.status ||
+    oldTask.estimated_duration !== newTask.estimated_duration ||
+    oldTask.category !== newTask.category ||
+    oldTask.title !== newTask.title
+  );
 }

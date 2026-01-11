@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
 import { 
   Bell, 
   BellOff, 
@@ -17,13 +18,39 @@ import {
   Timer,
   TestTube,
   RefreshCw,
+  Gauge,
+  Ban,
 } from "lucide-react";
 import { useLocalNotifications } from "@/hooks/useLocalNotifications";
 import { toast } from "sonner";
+import { 
+  UserNotificationPreferences, 
+  DEFAULT_NOTIFICATION_PREFERENCES 
+} from "@/utils/notificationDecisionEngine";
 
 interface NotificationSettingsCardProps {
   onSettingsChange?: () => void;
 }
+
+// Get/set user notification preferences
+const getUserPreferences = (): UserNotificationPreferences => {
+  try {
+    const stored = localStorage.getItem('userNotificationPreferences');
+    if (stored) {
+      return { ...DEFAULT_NOTIFICATION_PREFERENCES, ...JSON.parse(stored) };
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return DEFAULT_NOTIFICATION_PREFERENCES;
+};
+
+const saveUserPreferences = (prefs: Partial<UserNotificationPreferences>) => {
+  const current = getUserPreferences();
+  const updated = { ...current, ...prefs };
+  localStorage.setItem('userNotificationPreferences', JSON.stringify(updated));
+  return updated;
+};
 
 export const NotificationSettingsCard = ({ onSettingsChange }: NotificationSettingsCardProps) => {
   const {
@@ -40,6 +67,7 @@ export const NotificationSettingsCard = ({ onSettingsChange }: NotificationSetti
   } = useLocalNotifications();
 
   const [localSettings, setLocalSettings] = useState(settings);
+  const [userPrefs, setUserPrefs] = useState<UserNotificationPreferences>(getUserPreferences());
 
   useEffect(() => {
     setLocalSettings(settings);
@@ -53,6 +81,16 @@ export const NotificationSettingsCard = ({ onSettingsChange }: NotificationSetti
     setLocalSettings(newSettings);
     updateSettings({ [key]: value });
     onSettingsChange?.();
+  };
+
+  const handleUserPrefChange = <K extends keyof UserNotificationPreferences>(
+    key: K,
+    value: UserNotificationPreferences[K]
+  ) => {
+    const updated = saveUserPreferences({ [key]: value });
+    setUserPrefs(updated);
+    onSettingsChange?.();
+    toast.success("Notification preference saved");
   };
 
   const handleTestNotification = async () => {
@@ -78,6 +116,22 @@ export const NotificationSettingsCard = ({ onSettingsChange }: NotificationSetti
     await cancelAllNotifications();
     await refreshPendingNotifications();
     toast.success("All scheduled notifications cleared");
+  };
+
+  const getFrequencyLabel = (multiplier: number): string => {
+    if (multiplier <= 0.5) return "Less aggressive";
+    if (multiplier <= 0.75) return "Somewhat less";
+    if (multiplier <= 1.25) return "Normal";
+    if (multiplier <= 1.75) return "Somewhat more";
+    return "More aggressive";
+  };
+
+  const togglePriorityDisabled = (priority: 'high' | 'medium' | 'low') => {
+    const current = userPrefs.disabledPriorities;
+    const updated = current.includes(priority)
+      ? current.filter(p => p !== priority)
+      : [...current, priority];
+    handleUserPrefChange('disabledPriorities', updated);
   };
 
   if (!isSupported) {
@@ -235,6 +289,97 @@ export const NotificationSettingsCard = ({ onSettingsChange }: NotificationSetti
               </div>
             </div>
 
+            {/* User Override Settings */}
+            <div className="space-y-4 border-t pt-4">
+              <h4 className="text-sm font-medium flex items-center gap-2">
+                <Gauge className="h-4 w-4" />
+                Smart Notification Settings
+              </h4>
+              
+              {/* Frequency Multiplier */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm">Notification Frequency</Label>
+                  <span className="text-sm text-muted-foreground">
+                    {getFrequencyLabel(userPrefs.frequencyMultiplier)}
+                  </span>
+                </div>
+                <Slider
+                  value={[userPrefs.frequencyMultiplier]}
+                  min={0.5}
+                  max={2}
+                  step={0.25}
+                  onValueCommit={(values) => handleUserPrefChange('frequencyMultiplier', values[0])}
+                  className="w-full"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Adjust how many notifications you receive. Lower = fewer, Higher = more.
+                </p>
+              </div>
+
+              {/* Minimum Lead Time */}
+              <div className="flex items-center gap-4">
+                <Label htmlFor="min-lead-time" className="min-w-fit text-sm">
+                  Minimum lead time
+                </Label>
+                <Select
+                  value={userPrefs.minimumLeadTime.toString()}
+                  onValueChange={(v) => handleUserPrefChange('minimumLeadTime', parseInt(v))}
+                >
+                  <SelectTrigger id="min-lead-time" className="w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5 minutes</SelectItem>
+                    <SelectItem value="10">10 minutes</SelectItem>
+                    <SelectItem value="15">15 minutes</SelectItem>
+                    <SelectItem value="30">30 minutes</SelectItem>
+                    <SelectItem value="60">1 hour</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Don't notify if a task is starting within this time.
+              </p>
+
+              {/* Disable by Priority */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Ban className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-sm">Disable notifications by priority</Label>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant={userPrefs.disabledPriorities.includes('high') ? "destructive" : "outline"}
+                    size="sm"
+                    onClick={() => togglePriorityDisabled('high')}
+                    className="text-xs"
+                  >
+                    🔴 High
+                  </Button>
+                  <Button
+                    variant={userPrefs.disabledPriorities.includes('medium') ? "destructive" : "outline"}
+                    size="sm"
+                    onClick={() => togglePriorityDisabled('medium')}
+                    className="text-xs"
+                  >
+                    🟡 Medium
+                  </Button>
+                  <Button
+                    variant={userPrefs.disabledPriorities.includes('low') ? "destructive" : "outline"}
+                    size="sm"
+                    onClick={() => togglePriorityDisabled('low')}
+                    className="text-xs"
+                  >
+                    🟢 Low
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Click to disable automatic notifications for specific priority levels.
+                </p>
+              </div>
+            </div>
+
             {/* Reminder Lead Time */}
             <div className="space-y-2 border-t pt-4">
               <h4 className="text-sm font-medium">Reminder Timing</h4>
@@ -276,8 +421,8 @@ export const NotificationSettingsCard = ({ onSettingsChange }: NotificationSetti
                   <Input
                     id="quiet-start"
                     type="time"
-                    value={localSettings.quietHoursStart}
-                    onChange={(e) => handleSettingChange('quietHoursStart', e.target.value)}
+                    value={userPrefs.quietHoursStart}
+                    onChange={(e) => handleUserPrefChange('quietHoursStart', e.target.value)}
                     className="w-[120px]"
                   />
                 </div>
@@ -286,8 +431,8 @@ export const NotificationSettingsCard = ({ onSettingsChange }: NotificationSetti
                   <Input
                     id="quiet-end"
                     type="time"
-                    value={localSettings.quietHoursEnd}
-                    onChange={(e) => handleSettingChange('quietHoursEnd', e.target.value)}
+                    value={userPrefs.quietHoursEnd}
+                    onChange={(e) => handleUserPrefChange('quietHoursEnd', e.target.value)}
                     className="w-[120px]"
                   />
                 </div>
