@@ -276,55 +276,62 @@ const SwipeableTaskCard = ({
   }
 
   return (
-    <div className="relative overflow-hidden rounded-lg">
-      {/* Swipe background indicators - mobile only */}
-      <div className="sm:hidden absolute inset-0 flex">
-        {/* Right swipe background (complete) */}
-        <div 
-          className={cn(
-            "absolute inset-y-0 left-0 flex items-center justify-start pl-4 transition-colors",
-            direction === 'right' ? (actionTriggered ? "bg-success" : "bg-success/50") : "bg-success/30"
+    <div className="relative overflow-hidden rounded-lg bg-card">
+      {/* Swipe background indicators - mobile only, only visible during swipe */}
+      {offsetX !== 0 && (
+        <div className="sm:hidden absolute inset-0 flex pointer-events-none">
+          {/* Right swipe background (complete) */}
+          {offsetX > 0 && (
+            <div 
+              className={cn(
+                "absolute inset-y-0 left-0 flex items-center justify-start pl-4",
+                actionTriggered ? "bg-success" : "bg-success/70"
+              )}
+              style={{ width: offsetX }}
+            >
+              <Check className={cn(
+                "h-5 w-5 text-white transition-transform",
+                actionTriggered ? "scale-125" : ""
+              )} />
+            </div>
           )}
-          style={{ width: Math.max(0, offsetX) }}
-        >
-          <Check className={cn(
-            "h-5 w-5 text-white transition-transform",
-            actionTriggered && direction === 'right' ? "scale-125" : ""
-          )} />
-        </div>
-        
-        {/* Left swipe background (actions) */}
-        <div 
-          className={cn(
-            "absolute inset-y-0 right-0 flex items-center justify-end pr-4 transition-colors",
-            direction === 'left' ? (actionTriggered ? "bg-muted" : "bg-muted/50") : "bg-muted/30"
+          
+          {/* Left swipe background (actions) */}
+          {offsetX < 0 && (
+            <div 
+              className={cn(
+                "absolute inset-y-0 right-0 flex items-center justify-end pr-4",
+                actionTriggered ? "bg-muted" : "bg-muted/70"
+              )}
+              style={{ width: Math.abs(offsetX) }}
+            >
+              <span className={cn(
+                "text-xs text-muted-foreground transition-transform",
+                actionTriggered ? "scale-110" : ""
+              )}>
+                Actions
+              </span>
+            </div>
           )}
-          style={{ width: Math.max(0, -offsetX) }}
-        >
-          <span className={cn(
-            "text-xs text-muted-foreground transition-transform",
-            actionTriggered && direction === 'left' ? "scale-110" : ""
-          )}>
-            Actions
-          </span>
         </div>
-      </div>
+      )}
 
       {/* Card content */}
       <Card
         ref={cardRef}
         className={cn(
-          "cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 group relative overflow-hidden bg-card",
+          "cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 group relative overflow-hidden",
           isOverdue ? "border border-destructive" : "border border-border"
         )}
         style={{
           transform: `translateX(${offsetX}px)`,
           transition: offsetX === 0 ? 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
+          backgroundColor: 'hsl(var(--card))',
         }}
         onClick={() => !showActionMenu && onClick(task.id)}
         {...swipeHandlers}
       >
-        <div className="relative">
+        <div className="relative" style={{ backgroundColor: 'hsl(var(--card))' }}>
           {renderDesktopContent(false)}
           {renderMobileContent(false)}
         </div>
