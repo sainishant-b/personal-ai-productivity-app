@@ -214,37 +214,37 @@ export default function AppLayout({ children }: AppLayoutProps) {
       {showNav && showBottomNav && user && (
         <div className="hidden md:flex fixed left-0 top-[49px] bottom-0 w-56 bg-card border-r z-30 flex-col p-4 gap-2 animate-in slide-in-from-left duration-200">
           <Button 
-            variant="ghost" 
-            onClick={() => { navigate("/"); setShowNav(false); }} 
-            className="justify-start h-11 text-sm"
+            variant={location.pathname === "/" ? "secondary" : "ghost"}
+            onClick={() => navigate("/")} 
+            className={`justify-start h-11 text-sm ${location.pathname === "/" ? "bg-primary/10 text-primary font-medium" : ""}`}
           >
             Dashboard
           </Button>
           <Button 
             variant="ghost" 
-            onClick={() => { setShowCheckIn(true); setShowNav(false); }} 
+            onClick={() => setShowCheckIn(true)} 
             className="justify-start h-11 text-sm"
           >
             Check-in
           </Button>
           <Button 
-            variant="ghost" 
-            onClick={() => { navigate("/calendar"); setShowNav(false); }} 
-            className="justify-start h-11 text-sm"
+            variant={location.pathname === "/calendar" ? "secondary" : "ghost"}
+            onClick={() => navigate("/calendar")} 
+            className={`justify-start h-11 text-sm ${location.pathname === "/calendar" ? "bg-primary/10 text-primary font-medium" : ""}`}
           >
             Calendar
           </Button>
           <Button 
-            variant="ghost" 
-            onClick={() => { navigate("/insights"); setShowNav(false); }} 
-            className="justify-start h-11 text-sm"
+            variant={location.pathname === "/insights" ? "secondary" : "ghost"}
+            onClick={() => navigate("/insights")} 
+            className={`justify-start h-11 text-sm ${location.pathname === "/insights" ? "bg-primary/10 text-primary font-medium" : ""}`}
           >
             Insights
           </Button>
           <Button 
-            variant="ghost" 
-            onClick={() => { navigate("/settings"); setShowNav(false); }} 
-            className="justify-start h-11 text-sm"
+            variant={location.pathname === "/settings" ? "secondary" : "ghost"}
+            onClick={() => navigate("/settings")} 
+            className={`justify-start h-11 text-sm ${location.pathname === "/settings" ? "bg-primary/10 text-primary font-medium" : ""}`}
           >
             Settings
           </Button>
