@@ -198,8 +198,7 @@ export default function AIRecommendations({ onTaskUpdate }: AIRecommendationsPro
       {/* Header row */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-3.5 w-3.5 md:h-4 md:w-4 text-foreground/60" />
-          <span className="text-xs md:text-sm font-medium">AI Recommendations</span>
+          <h2 className="text-lg md:text-xl font-semibold text-foreground">AI Recommendations</h2>
           {activeTasks.length > 0 && (
             <Badge variant="secondary" className="text-[10px] md:text-xs">{activeTasks.length}</Badge>
           )}
