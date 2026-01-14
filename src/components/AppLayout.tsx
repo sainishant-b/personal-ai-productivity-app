@@ -10,8 +10,8 @@ import {
   BarChart3, 
   Settings, 
   LogOut,
-  ChevronLeft,
-  ChevronRight
+  Menu,
+  PanelLeftClose
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -205,24 +205,29 @@ export default function AppLayout({ children }: AppLayoutProps) {
       {showBottomNav && user && (
         <TooltipProvider delayDuration={0}>
           <aside 
-            className={`hidden md:flex flex-col items-center bg-background border-r border-border py-4 px-2 gap-2 shrink-0 transition-all duration-300 ${
-              sidebarExpanded ? "w-48" : "w-14"
+            className={`hidden md:flex flex-col bg-background border-r border-border py-4 px-2 gap-2 shrink-0 transition-all duration-300 ${
+              sidebarExpanded ? "w-48 items-stretch" : "w-14 items-center"
             }`}
           >
-            {/* Toggle expand/collapse */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setSidebarExpanded(!sidebarExpanded)}
-                  className="h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted mb-4"
-                >
-                  {sidebarExpanded ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">{sidebarExpanded ? "Collapse" : "Expand"}</TooltipContent>
-            </Tooltip>
+            {/* Header with toggle and app name */}
+            <div className={`flex items-center gap-2 mb-4 ${sidebarExpanded ? "px-2" : "justify-center"}`}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setSidebarExpanded(!sidebarExpanded)}
+                    className="h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted shrink-0"
+                  >
+                    {sidebarExpanded ? <PanelLeftClose className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">{sidebarExpanded ? "Collapse" : "Expand"}</TooltipContent>
+              </Tooltip>
+              {sidebarExpanded && (
+                <span className="font-semibold text-foreground whitespace-nowrap">AI Productivity</span>
+              )}
+            </div>
 
             {/* Dashboard */}
             <Tooltip>
