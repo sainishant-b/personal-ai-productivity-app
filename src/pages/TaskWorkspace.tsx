@@ -92,9 +92,11 @@ const TaskWorkspace = () => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [isEditingDueDate, setIsEditingDueDate] = useState(false);
   const [editedTitle, setEditedTitle] = useState("");
   const [editedDescription, setEditedDescription] = useState("");
   const [editedNotes, setEditedNotes] = useState("");
+  const [editedDueDate, setEditedDueDate] = useState("");
 
   useEffect(() => {
     loadTask();
@@ -121,6 +123,7 @@ const TaskWorkspace = () => {
     setEditedTitle(data.title);
     setEditedDescription(data.description || "");
     setEditedNotes(data.notes || "");
+    setEditedDueDate(data.due_date ? new Date(data.due_date).toISOString().slice(0, 16) : "");
   };
 
   const loadCheckIns = async () => {
@@ -310,6 +313,44 @@ const TaskWorkspace = () => {
     toast.success("Priority updated!");
   };
 
+  const saveDueDate = async () => {
+    if (!taskId || !task) return;
+    const newDueDate = editedDueDate ? new Date(editedDueDate).toISOString() : null;
+    const { error } = await supabase
+      .from("tasks")
+      .update({ due_date: newDueDate })
+      .eq("id", taskId);
+
+    if (error) {
+      toast.error("Failed to update due date");
+      return;
+    }
+
+    await logTaskChange("due_date", task.due_date, newDueDate);
+    setTask(prev => prev ? { ...prev, due_date: newDueDate } : null);
+    setIsEditingDueDate(false);
+    toast.success("Due date updated!");
+  };
+
+  const clearDueDate = async () => {
+    if (!taskId || !task) return;
+    const { error } = await supabase
+      .from("tasks")
+      .update({ due_date: null })
+      .eq("id", taskId);
+
+    if (error) {
+      toast.error("Failed to clear due date");
+      return;
+    }
+
+    await logTaskChange("due_date", task.due_date, null, "Due date cleared");
+    setTask(prev => prev ? { ...prev, due_date: null } : null);
+    setEditedDueDate("");
+    setIsEditingDueDate(false);
+    toast.success("Due date cleared!");
+  };
+
   const completeTask = async () => {
     if (!taskId || !task) return;
     const { error } = await supabase
@@ -459,15 +500,48 @@ const TaskWorkspace = () => {
                 </div>
                 <p className="text-xl font-bold">{totalTimeSpent}m</p>
               </div>
-              <div className="p-3 rounded-xl bg-background border border-border/50">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                  <Calendar className="h-3 w-3" />
-                  Due Date
+              {!isEditingDueDate ? (
+                <div 
+                  className="p-3 rounded-xl bg-background border border-border/50 cursor-pointer hover:bg-muted/50 transition-colors group"
+                  onClick={() => setIsEditingDueDate(true)}
+                >
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                    <Calendar className="h-3 w-3" />
+                    Due Date
+                    <Edit2 className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity ml-auto" />
+                  </div>
+                  <p className="text-sm font-medium">
+                    {task.due_date ? format(new Date(task.due_date), "MMM d, yyyy") : "Not set"}
+                  </p>
                 </div>
-                <p className="text-sm font-medium">
-                  {task.due_date ? format(new Date(task.due_date), "MMM d, yyyy") : "Not set"}
-                </p>
-              </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-background border border-border/50 col-span-2">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                    <Calendar className="h-3 w-3" />
+                    Due Date
+                  </div>
+                  <Input
+                    type="datetime-local"
+                    value={editedDueDate}
+                    onChange={(e) => setEditedDueDate(e.target.value)}
+                    className="text-sm rounded-xl mb-2"
+                  />
+                  <div className="flex gap-2">
+                    <Button onClick={saveDueDate} size="sm" className="rounded-xl flex-1">
+                      <Save className="h-4 w-4 mr-1" />
+                      Save
+                    </Button>
+                    {task.due_date && (
+                      <Button onClick={clearDueDate} variant="outline" size="sm" className="rounded-xl">
+                        Clear
+                      </Button>
+                    )}
+                    <Button onClick={() => { setEditedDueDate(task.due_date ? new Date(task.due_date).toISOString().slice(0, 16) : ""); setIsEditingDueDate(false); }} variant="ghost" size="sm" className="rounded-xl">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div className="p-3 rounded-xl bg-background border border-border/50">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                   <Tag className="h-3 w-3" />

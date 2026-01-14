@@ -229,6 +229,27 @@ const Dashboard = () => {
       setShowTaskDialog(true);
     }
   };
+
+  const handleRescheduleAllOverdue = async () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0); // Set to 9 AM tomorrow
+    
+    const overdueTaskIds = overdueTasks.map(t => t.id);
+    if (overdueTaskIds.length === 0) return;
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({ due_date: tomorrow.toISOString() })
+      .in("id", overdueTaskIds);
+
+    if (error) {
+      toast.error("Failed to reschedule tasks");
+    } else {
+      toast.success(`${overdueTaskIds.length} task${overdueTaskIds.length > 1 ? 's' : ''} rescheduled to tomorrow`);
+      fetchTasks();
+    }
+  };
   return <div className="flex-1 overflow-hidden">
       {/* Stats bar for mobile/native only */}
       {isMobile && (
@@ -281,7 +302,7 @@ const Dashboard = () => {
               </Button>
             </div> : <div className="space-y-3 md:space-y-4">
               {/* Overdue tasks section */}
-              <OverdueTasksSection tasks={overdueTasks} onToggleComplete={handleToggleComplete} onClick={id => navigate(`/task/${id}`)} onSkip={handleSkipTask} onReschedule={handleRescheduleTask} onDelete={handleDeleteTask} />
+              <OverdueTasksSection tasks={overdueTasks} onToggleComplete={handleToggleComplete} onClick={id => navigate(`/task/${id}`)} onSkip={handleSkipTask} onReschedule={handleRescheduleTask} onDelete={handleDeleteTask} onRescheduleAll={handleRescheduleAllOverdue} />
               
               {/* Priority sections */}
               <PrioritySection priority="high" tasks={highPriorityTasks} onToggleComplete={handleToggleComplete} onClick={id => navigate(`/task/${id}`)} onSkip={handleSkipTask} onReschedule={handleRescheduleTask} onDelete={handleDeleteTask} />
