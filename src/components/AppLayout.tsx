@@ -3,10 +3,27 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { StatusBar, Style } from "@capacitor/status-bar";
-import { Menu, X, LogOut } from "lucide-react";
+import { 
+  LayoutDashboard, 
+  Plus, 
+  User, 
+  Calendar, 
+  BarChart3, 
+  Settings, 
+  LogOut,
+  Square,
+  Copy
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import MobileBottomNav from "./MobileBottomNav";
 import CheckInModal from "./CheckInModal";
+import TaskDialog from "./TaskDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -18,7 +35,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [showCheckIn, setShowCheckIn] = useState(false);
-  const [showNav, setShowNav] = useState(false);
+  const [showTaskDialog, setShowTaskDialog] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
 
@@ -172,9 +189,29 @@ export default function AppLayout({ children }: AppLayoutProps) {
     return () => window.removeEventListener("open-checkin", handleOpenCheckIn);
   }, []);
 
+  const isActive = (path: string) => location.pathname === path;
+
+  const handleSaveTask = async (taskData: any) => {
+    if (!user) return;
+    
+    const { error } = await supabase.from("tasks").insert([{
+      ...taskData,
+      user_id: user.id
+    }]);
+    
+    if (error) {
+      toast.error("Failed to create task");
+    } else {
+      toast.success("Task created!");
+      // Dispatch event to refresh tasks in Dashboard
+      window.dispatchEvent(new CustomEvent("tasks-updated"));
+    }
+    setShowTaskDialog(false);
+  };
+
   return (
     <div 
-      className="min-h-screen bg-background flex flex-col"
+      className="min-h-screen bg-background flex"
       style={{ 
         // iOS uses safe-area-inset for notch/Dynamic Island
         paddingTop: isIOS ? "env(safe-area-inset-top, 0px)" : "env(safe-area-inset-top, 0px)",
@@ -185,87 +222,142 @@ export default function AppLayout({ children }: AppLayoutProps) {
         paddingRight: "env(safe-area-inset-right, 0px)",
       }}
     >
-      {/* Global Header - shown on all pages except auth */}
+      {/* Left Icon Sidebar - Desktop/Tablet */}
       {showBottomNav && user && (
-        <header className="border-b bg-card/80 backdrop-blur-md sticky top-0 z-40">
-          <div className="px-3 md:px-4 lg:px-6 py-2 max-w-full flex items-center justify-between">
-            {/* Left side - Menu toggle (desktop/tablet) */}
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={() => setShowNav(!showNav)} 
-              className="h-10 w-10 hidden md:flex"
-            >
-              {showNav ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </Button>
-            
-            {/* Spacer for mobile */}
-            <div className="md:hidden" />
-            
-            {/* Right side - Logout */}
-            <Button variant="ghost" size="icon" onClick={handleSignOut} className="h-9 w-9 md:h-10 md:w-10">
-              <LogOut className="h-4 w-4 md:h-5 md:w-5" />
-            </Button>
-          </div>
-        </header>
+        <TooltipProvider delayDuration={0}>
+          <aside className="hidden md:flex flex-col items-center w-14 bg-zinc-900 border-r border-zinc-800 py-4 gap-1 shrink-0">
+            {/* Top toggle icons */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => navigate("/")}
+                  className={`h-10 w-10 text-zinc-400 hover:text-white hover:bg-zinc-800 ${
+                    isActive("/") ? "text-white bg-zinc-800" : ""
+                  }`}
+                >
+                  <Square className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Dashboard</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10 text-zinc-400 hover:text-white hover:bg-zinc-800"
+                >
+                  <Copy className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Duplicate</TooltipContent>
+            </Tooltip>
+
+            {/* Add Task Button - Orange accent */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  onClick={() => setShowTaskDialog(true)}
+                  className="h-10 w-10 mt-2 rounded-full bg-orange-500 hover:bg-orange-600 text-white shadow-lg"
+                >
+                  <Plus className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Add Task</TooltipContent>
+            </Tooltip>
+
+            {/* Navigation icons */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowCheckIn(true)}
+                  className="h-10 w-10 mt-2 text-zinc-400 hover:text-white hover:bg-zinc-800"
+                >
+                  <User className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Check-in</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => navigate("/calendar")}
+                  className={`h-10 w-10 text-zinc-400 hover:text-white hover:bg-zinc-800 ${
+                    isActive("/calendar") ? "text-white bg-zinc-800" : ""
+                  }`}
+                >
+                  <Calendar className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Calendar</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => navigate("/insights")}
+                  className={`h-10 w-10 text-zinc-400 hover:text-white hover:bg-zinc-800 ${
+                    isActive("/insights") ? "text-white bg-zinc-800" : ""
+                  }`}
+                >
+                  <BarChart3 className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Insights</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => navigate("/settings")}
+                  className={`h-10 w-10 text-zinc-400 hover:text-white hover:bg-zinc-800 ${
+                    isActive("/settings") ? "text-white bg-zinc-800" : ""
+                  }`}
+                >
+                  <Settings className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Settings</TooltipContent>
+            </Tooltip>
+
+            {/* Spacer to push logout to bottom */}
+            <div className="flex-1" />
+
+            {/* Logout at bottom */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleSignOut}
+                  className="h-10 w-10 text-zinc-400 hover:text-white hover:bg-zinc-800"
+                >
+                  <LogOut className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Sign Out</TooltipContent>
+            </Tooltip>
+          </aside>
+        </TooltipProvider>
       )}
 
-      {/* Main layout with sidebar */}
-      <div className="flex flex-1">
-        {/* Left Navigation Panel - Desktop/Tablet - pushes content */}
-        {showBottomNav && user && (
-          <aside 
-            className={`hidden md:flex flex-col bg-card border-r p-4 gap-2 shrink-0 transition-all duration-300 ease-in-out ${
-              showNav ? "w-56" : "w-0 p-0 overflow-hidden"
-            }`}
-          >
-            {showNav && (
-              <>
-                <Button 
-                  variant={location.pathname === "/" ? "secondary" : "ghost"}
-                  onClick={() => navigate("/")} 
-                  className={`justify-start h-11 text-sm ${location.pathname === "/" ? "bg-primary/10 text-primary font-medium" : ""}`}
-                >
-                  Dashboard
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  onClick={() => setShowCheckIn(true)} 
-                  className="justify-start h-11 text-sm"
-                >
-                  Check-in
-                </Button>
-                <Button 
-                  variant={location.pathname === "/calendar" ? "secondary" : "ghost"}
-                  onClick={() => navigate("/calendar")} 
-                  className={`justify-start h-11 text-sm ${location.pathname === "/calendar" ? "bg-primary/10 text-primary font-medium" : ""}`}
-                >
-                  Calendar
-                </Button>
-                <Button 
-                  variant={location.pathname === "/insights" ? "secondary" : "ghost"}
-                  onClick={() => navigate("/insights")} 
-                  className={`justify-start h-11 text-sm ${location.pathname === "/insights" ? "bg-primary/10 text-primary font-medium" : ""}`}
-                >
-                  Insights
-                </Button>
-                <Button 
-                  variant={location.pathname === "/settings" ? "secondary" : "ghost"}
-                  onClick={() => navigate("/settings")} 
-                  className={`justify-start h-11 text-sm ${location.pathname === "/settings" ? "bg-primary/10 text-primary font-medium" : ""}`}
-                >
-                  Settings
-                </Button>
-              </>
-            )}
-          </aside>
-        )}
-
-        {/* Main content area - expands when sidebar is collapsed */}
-        <main className="flex-1 min-w-0 transition-all duration-300">
-          {children}
-        </main>
-      </div>
+      {/* Main content area */}
+      <main className="flex-1 min-w-0 flex flex-col">
+        {children}
+      </main>
       
       {showBottomNav && (
         <MobileBottomNav onCheckIn={() => setShowCheckIn(true)} />
@@ -276,6 +368,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
         onClose={() => setShowCheckIn(false)}
         question={checkInQuestions[Math.floor(Math.random() * checkInQuestions.length)]}
         onSubmit={handleCheckInSubmit}
+      />
+
+      <TaskDialog
+        open={showTaskDialog}
+        onClose={() => setShowTaskDialog(false)}
+        onSave={handleSaveTask}
       />
     </div>
   );
