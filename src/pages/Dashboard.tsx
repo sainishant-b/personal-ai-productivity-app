@@ -19,8 +19,10 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { useTaskReminders } from "@/hooks/useTaskReminders";
 import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { useLocalNotifications } from "@/hooks/useLocalNotifications";
+import { useIsMobile } from "@/hooks/use-mobile";
 const Dashboard = () => {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [user, setUser] = useState<any>(null);
   const [tasks, setTasks] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>(null);
@@ -228,17 +230,19 @@ const Dashboard = () => {
     }
   };
   return <div className="flex-1 overflow-hidden">
-      {/* Stats bar for mobile only */}
-      <div className="md:hidden">
+      {/* Stats bar for mobile/native only */}
+      {isMobile && (
         <MobileStatsBar streak={profile?.current_streak || 0} completedCount={completedCount} nextCheckIn={formatNextCheckIn()} isWorkHours={isWorkHours} />
-      </div>
+      )}
 
       {/* Main layout */}
       <div className="flex w-full overflow-hidden">
-        {/* Sticky sidebar - tablet and desktop (md+) */}
-        <div className="hidden md:block p-4 lg:p-6 shrink-0">
-          <StatsSidebar streak={profile?.current_streak || 0} completedCount={completedCount} nextCheckIn={formatNextCheckIn()} isWorkHours={isWorkHours} />
-        </div>
+        {/* Sticky sidebar - tablet and desktop only (not on native) */}
+        {!isMobile && (
+          <div className="p-4 lg:p-6 shrink-0">
+            <StatsSidebar streak={profile?.current_streak || 0} completedCount={completedCount} nextCheckIn={formatNextCheckIn()} isWorkHours={isWorkHours} />
+          </div>
+        )}
 
         {/* Main content */}
         <main className="flex-1 p-3 md:p-4 lg:p-6 min-w-0 max-w-full md:max-w-4xl overflow-hidden">
@@ -292,15 +296,17 @@ const Dashboard = () => {
         </main>
       </div>
 
-      {/* Floating FAB for mobile - positioned above bottom nav */}
-      <Button onClick={() => {
-      setSelectedTask(null);
-      setShowTaskDialog(true);
-    }} size="icon" className="fixed bottom-20 right-4 h-12 w-12 rounded-full shadow-lg md:hidden z-40" style={{
-      marginBottom: "env(safe-area-inset-bottom, 0px)"
-    }}>
-        <Plus className="h-5 w-5" />
-      </Button>
+      {/* Floating FAB for mobile/native - positioned above bottom nav */}
+      {isMobile && (
+        <Button onClick={() => {
+          setSelectedTask(null);
+          setShowTaskDialog(true);
+        }} size="icon" className="fixed bottom-20 right-4 h-12 w-12 rounded-full shadow-lg z-40" style={{
+          marginBottom: "env(safe-area-inset-bottom, 0px)"
+        }}>
+          <Plus className="h-5 w-5" />
+        </Button>
+      )}
 
       <TaskDialog open={showTaskDialog} onClose={() => {
       setShowTaskDialog(false);

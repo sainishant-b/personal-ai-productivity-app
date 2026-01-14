@@ -23,6 +23,7 @@ import {
 import MobileBottomNav from "./MobileBottomNav";
 import CheckInModal from "./CheckInModal";
 import { supabase } from "@/integrations/supabase/client";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -31,6 +32,7 @@ interface AppLayoutProps {
 export default function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [showCheckIn, setShowCheckIn] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -201,11 +203,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
         paddingRight: "env(safe-area-inset-right, 0px)",
       }}
     >
-      {/* Left Icon Sidebar - Desktop/Tablet */}
-      {showBottomNav && user && (
+      {/* Left Icon Sidebar - Desktop/Tablet only (not on native) */}
+      {showBottomNav && user && !isMobile && (
         <TooltipProvider delayDuration={0}>
           <aside 
-            className={`hidden md:flex flex-col bg-background border-r border-border py-4 px-2 gap-2 shrink-0 transition-all duration-300 ${
+            className={`flex flex-col bg-background border-r border-border py-4 px-2 gap-2 shrink-0 transition-all duration-300 ${
               sidebarExpanded ? "w-48 items-stretch" : "w-14 items-center"
             }`}
           >

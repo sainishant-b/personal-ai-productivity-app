@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, CheckCircle2, Flame, Trophy, TrendingUp, ChevronLeft, ChevronRight } from "lucide-react";
 import { format, startOfYear, endOfYear, eachDayOfInterval, getMonth } from "date-fns";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface TaskCompletionData {
   date: string;
@@ -13,6 +14,7 @@ interface TaskCompletionData {
 
 const Insights = () => {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [totalCompleted, setTotalCompleted] = useState(0);
@@ -276,66 +278,68 @@ const Insights = () => {
             </div>
           </CardHeader>
           <CardContent className="p-3 sm:p-6 pt-0">
-            {/* Desktop Heatmap - Horizontal */}
-            <div className="hidden sm:block overflow-x-auto">
-              <div className="w-full">
-                {/* Month labels */}
-                <div className="flex mb-2 text-xs text-muted-foreground relative h-4">
-                  <div className="w-10" />
-                  <div className="flex-1 relative">
-                    {monthLabels.map((label, i) => (
-                      <span
-                        key={i}
-                        className="absolute"
-                        style={{ left: `${(label.position / weeks.length) * 100}%` }}
-                      >
-                        {label.month}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Heatmap grid */}
-                <div className="flex justify-between">
-                  {/* Day labels */}
-                  <div className="flex flex-col gap-[3px] text-xs text-muted-foreground pr-2 w-8 shrink-0">
-                    <div className="h-[12px]" />
-                    <div className="h-[12px] flex items-center">Mon</div>
-                    <div className="h-[12px]" />
-                    <div className="h-[12px] flex items-center">Wed</div>
-                    <div className="h-[12px]" />
-                    <div className="h-[12px] flex items-center">Fri</div>
-                    <div className="h-[12px]" />
-                  </div>
-                  
-                  {/* Weeks */}
-                  {weeks.map((week, weekIndex) => (
-                    <div key={weekIndex} className="flex flex-col gap-[3px]">
-                      {week.map((day, dayIndex) => (
-                        <div
-                          key={`${weekIndex}-${dayIndex}`}
-                          className={`w-[12px] h-[12px] rounded-sm transition-all duration-200 hover:scale-125 hover:ring-2 hover:ring-primary/50 ${
-                            day.count === -1 ? "bg-transparent" : getHeatmapColor(day.count)
-                          }`}
-                          title={day.date ? `${day.date}: ${day.count} task${day.count !== 1 ? "s" : ""}` : ""}
-                        />
+            {/* Desktop Heatmap - Horizontal (only show on non-mobile/non-native) */}
+            {!isMobile && (
+              <div className="overflow-x-auto">
+                <div className="w-full">
+                  {/* Month labels */}
+                  <div className="flex mb-2 text-xs text-muted-foreground relative h-4">
+                    <div className="w-10" />
+                    <div className="flex-1 relative">
+                      {monthLabels.map((label, i) => (
+                        <span
+                          key={i}
+                          className="absolute"
+                          style={{ left: `${(label.position / weeks.length) * 100}%` }}
+                        >
+                          {label.month}
+                        </span>
                       ))}
                     </div>
-                  ))}
-                </div>
-                
-                {/* Legend */}
-                <div className="flex items-center justify-end gap-2 mt-4 text-xs text-muted-foreground">
-                  <span>No tasks</span>
-                  <div className="w-[12px] h-[12px] rounded-sm bg-muted/30" />
-                  <div className="w-[12px] h-[12px] rounded-sm bg-white dark:bg-white" />
-                  <span>Completed</span>
+                  </div>
+
+                  {/* Heatmap grid */}
+                  <div className="flex justify-between">
+                    {/* Day labels */}
+                    <div className="flex flex-col gap-[3px] text-xs text-muted-foreground pr-2 w-8 shrink-0">
+                      <div className="h-[12px]" />
+                      <div className="h-[12px] flex items-center">Mon</div>
+                      <div className="h-[12px]" />
+                      <div className="h-[12px] flex items-center">Wed</div>
+                      <div className="h-[12px]" />
+                      <div className="h-[12px] flex items-center">Fri</div>
+                      <div className="h-[12px]" />
+                    </div>
+                    
+                    {/* Weeks */}
+                    {weeks.map((week, weekIndex) => (
+                      <div key={weekIndex} className="flex flex-col gap-[3px]">
+                        {week.map((day, dayIndex) => (
+                          <div
+                            key={`${weekIndex}-${dayIndex}`}
+                            className={`w-[12px] h-[12px] rounded-sm transition-all duration-200 hover:scale-125 hover:ring-2 hover:ring-primary/50 ${
+                              day.count === -1 ? "bg-transparent" : getHeatmapColor(day.count)
+                            }`}
+                            title={day.date ? `${day.date}: ${day.count} task${day.count !== 1 ? "s" : ""}` : ""}
+                          />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Legend */}
+                  <div className="flex items-center justify-end gap-2 mt-4 text-xs text-muted-foreground">
+                    <span>No tasks</span>
+                    <div className="w-[12px] h-[12px] rounded-sm bg-muted/30" />
+                    <div className="w-[12px] h-[12px] rounded-sm bg-white dark:bg-white" />
+                    <span>Completed</span>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
-            {/* Mobile Heatmap - Vertical (weeks as rows, days as columns) */}
-            <div className="sm:hidden">
+            {/* Mobile/Native Heatmap - Vertical (weeks as rows, days as columns) */}
+            {isMobile && (
               <div className="w-full">
                 {/* Day labels header */}
                 <div className="grid grid-cols-[32px_repeat(7,1fr)] gap-1 mb-2">
@@ -389,7 +393,7 @@ const Insights = () => {
                   <span>Completed</span>
                 </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </main>
