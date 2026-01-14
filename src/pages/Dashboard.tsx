@@ -271,7 +271,6 @@ const Dashboard = () => {
             onClick={() => { navigate("/calendar"); setShowNav(false); }} 
             className="justify-start h-11 text-sm"
           >
-            <Calendar className="h-4 w-4 mr-2" />
             Calendar
           </Button>
           <Button 
@@ -279,7 +278,6 @@ const Dashboard = () => {
             onClick={() => { navigate("/insights"); setShowNav(false); }} 
             className="justify-start h-11 text-sm"
           >
-            <BarChart3 className="h-4 w-4 mr-2" />
             Insights
           </Button>
           <Button 
