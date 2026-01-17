@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -18,6 +18,11 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import {
+  getCachedRecommendations,
+  cacheRecommendations,
+  shouldRefreshRecommendations
+} from '@/utils/recommendationCache';
 
 interface RecommendedTask {
   taskId: string;
@@ -70,13 +75,32 @@ export default function AIRecommendations({ onTaskUpdate }: AIRecommendationsPro
     return () => subscription.unsubscribe();
   }, []);
 
+  // Smart loading: use cache if available and not invalidated
   useEffect(() => {
     if (hasSession) {
-      getRecommendations();
+      const cached = getCachedRecommendations();
+      
+      if (cached && !shouldRefreshRecommendations()) {
+        // Use cached data
+        setRecommendations(cached.data);
+        console.log('Using cached AI recommendations');
+      } else {
+        // Fetch fresh recommendations
+        getRecommendations();
+      }
     }
   }, [hasSession]);
 
-  const getRecommendations = async () => {
+  const getRecommendations = useCallback(async (force = false) => {
+    // If not forced, check if we really need to refresh
+    if (!force && !shouldRefreshRecommendations()) {
+      const cached = getCachedRecommendations();
+      if (cached) {
+        setRecommendations(cached.data);
+        return;
+      }
+    }
+
     setIsLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('task-recommendations', {
@@ -98,7 +122,10 @@ export default function AIRecommendations({ onTaskUpdate }: AIRecommendationsPro
         throw error;
       }
 
+      // Cache the new recommendations
+      cacheRecommendations(data);
       setRecommendations(data);
+      console.log('AI recommendations refreshed and cached');
     } catch (error: any) {
       console.error('Error getting recommendations:', error);
       toast({
@@ -109,7 +136,7 @@ export default function AIRecommendations({ onTaskUpdate }: AIRecommendationsPro
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [navigate, toast]);
 
   const scheduleTask = async (task: RecommendedTask) => {
     try {
@@ -203,7 +230,7 @@ export default function AIRecommendations({ onTaskUpdate }: AIRecommendationsPro
             <Badge variant="secondary" className="text-[10px] md:text-xs">{activeTasks.length}</Badge>
           )}
         </div>
-        <Button onClick={getRecommendations} variant="ghost" size="sm" className="h-6 md:h-7 text-[10px] md:text-xs gap-1">
+        <Button onClick={() => getRecommendations(true)} variant="ghost" size="sm" className="h-6 md:h-7 text-[10px] md:text-xs gap-1">
           <RefreshCw className="h-3 w-3" />
           <span className="hidden sm:inline">Refresh</span>
         </Button>

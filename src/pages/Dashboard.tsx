@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import { useTaskReminders } from "@/hooks/useTaskReminders";
 import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { useLocalNotifications } from "@/hooks/useLocalNotifications";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { invalidateRecommendations } from "@/utils/recommendationCache";
 const Dashboard = () => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -127,6 +128,8 @@ const Dashboard = () => {
     setProfile(data);
   };
   const handleSaveTask = async (taskData: any) => {
+    const isNewTask = !selectedTask;
+    
     if (selectedTask) {
       const {
         error
@@ -139,7 +142,11 @@ const Dashboard = () => {
         ...taskData,
         user_id: user.id
       }]);
-      if (error) toast.error("Failed to create task");else toast.success("Task created!");
+      if (error) toast.error("Failed to create task");else {
+        toast.success("Task created!");
+        // Invalidate recommendations when a new task is added
+        invalidateRecommendations();
+      }
     }
     fetchTasks();
     setSelectedTask(null);
@@ -158,6 +165,8 @@ const Dashboard = () => {
         toast.success("Task completed");
         // Cancel any pending notification for this task
         handleTaskCompleted(taskId);
+        // Invalidate recommendations when a task is completed
+        invalidateRecommendations();
       }
     }
     fetchTasks();
