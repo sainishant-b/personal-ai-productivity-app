@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
-import { isPast } from "date-fns";
+import { isPast, format } from "date-fns";
 import PrioritySection from "@/components/PrioritySection";
 import CompletedTasksSection from "@/components/CompletedTasksSection";
 import OverdueTasksSection from "@/components/OverdueTasksSection";
@@ -21,12 +21,7 @@ import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { useLocalNotifications } from "@/hooks/useLocalNotifications";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { invalidateRecommendations } from "@/utils/recommendationCache";
-import { 
-  calculateNextOccurrence, 
-  createNextTaskData, 
-  shouldGenerateNextOccurrence,
-  TaskWithRepeat 
-} from "@/utils/repeatTaskUtils";
+import { toggleRepeatCompletion, isCompletedToday } from "@/utils/repeatCompletionUtils";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -118,14 +113,31 @@ const Dashboard = () => {
       fetchProfile();
     }
   }, [user]);
+  
   const fetchTasks = async () => {
-    const {
-      data,
-      error
-    } = await supabase.from("tasks").select("*").order("created_at", {
-      ascending: false
-    });
-    if (error) toast.error("Failed to load tasks");else setTasks(data || []);
+    const { data, error } = await supabase
+      .from("tasks")
+      .select("*")
+      .order("created_at", { ascending: false });
+    
+    if (error) {
+      toast.error("Failed to load tasks");
+      setLoading(false);
+      return;
+    }
+    
+    // For repeating tasks, check if they're completed today
+    const tasksWithCompletionStatus = await Promise.all(
+      (data || []).map(async (task) => {
+        if (task.repeat_enabled) {
+          const completedToday = await isCompletedToday(task.id);
+          return { ...task, isCompletedToday: completedToday };
+        }
+        return task;
+      })
+    );
+    
+    setTasks(tasksWithCompletionStatus);
     setLoading(false);
   };
   const fetchProfile = async () => {
@@ -159,83 +171,65 @@ const Dashboard = () => {
     setSelectedTask(null);
   };
   const handleToggleComplete = async (taskId: string, currentStatus: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    
+    if (!task) return;
+    
+    // Handle repeating tasks differently
+    if (task.repeat_enabled) {
+      try {
+        const config = {
+          repeat_enabled: true,
+          repeat_frequency: task.repeat_frequency || 1,
+          repeat_unit: task.repeat_unit || "week",
+          repeat_days_of_week: task.repeat_days_of_week || [],
+          repeat_times: task.repeat_times || [],
+        };
+        
+        const result = await toggleRepeatCompletion(taskId, user.id, config);
+        
+        if (result.completed) {
+          if (result.currentStreak > 1) {
+            toast.success(`🔥 ${result.currentStreak} day streak!`);
+          } else {
+            toast.success("Completed for today!");
+          }
+          handleTaskCompleted(taskId);
+          invalidateRecommendations();
+        } else {
+          toast.info("Unmarked for today");
+        }
+        
+        fetchTasks();
+      } catch (error) {
+        console.error("Failed to toggle repeat completion:", error);
+        toast.error("Failed to update task");
+      }
+      return;
+    }
+    
+    // Regular task completion logic
     const newStatus = currentStatus === "completed" ? "in_progress" : "completed";
     
-    // Get the task to check for repeat settings
-    const task = tasks.find(t => t.id === taskId) as TaskWithRepeat | undefined;
-    
-    const {
-      error
-    } = await supabase.from("tasks").update({
-      status: newStatus,
-      completed_at: newStatus === "completed" ? new Date().toISOString() : null,
-      progress: newStatus === "completed" ? 100 : undefined
-    }).eq("id", taskId);
+    const { error } = await supabase
+      .from("tasks")
+      .update({
+        status: newStatus,
+        completed_at: newStatus === "completed" ? new Date().toISOString() : null,
+        progress: newStatus === "completed" ? 100 : undefined
+      })
+      .eq("id", taskId);
     
     if (error) {
       toast.error("Failed to update task");
     } else {
       if (newStatus === "completed") {
         toast.success("Task completed");
-        // Cancel any pending notification for this task
         handleTaskCompleted(taskId);
-        // Invalidate recommendations when a task is completed
         invalidateRecommendations();
-        
-        // Generate next occurrence for repeating tasks
-        if (task && task.repeat_enabled && shouldGenerateNextOccurrence(task)) {
-          const nextDate = calculateNextOccurrence(new Date(), {
-            repeat_enabled: task.repeat_enabled,
-            repeat_frequency: task.repeat_frequency,
-            repeat_unit: task.repeat_unit,
-            repeat_days_of_week: task.repeat_days_of_week || [],
-            repeat_times: task.repeat_times || [],
-            repeat_end_type: task.repeat_end_type,
-            repeat_end_date: task.repeat_end_date,
-            repeat_end_count: task.repeat_end_count,
-            repeat_completed_count: task.repeat_completed_count,
-          });
-          
-          if (nextDate) {
-            const nextTaskData = createNextTaskData(task, nextDate);
-            // Ensure required fields are present before inserting
-            const insertData = {
-              title: nextTaskData.title || task.title,
-              priority: nextTaskData.priority || task.priority,
-              user_id: nextTaskData.user_id || task.user_id,
-              status: nextTaskData.status || "not_started",
-              category: nextTaskData.category || task.category,
-              description: nextTaskData.description,
-              estimated_duration: nextTaskData.estimated_duration,
-              notes: nextTaskData.notes,
-              due_date: nextTaskData.due_date,
-              progress: nextTaskData.progress || 0,
-              repeat_enabled: nextTaskData.repeat_enabled,
-              repeat_frequency: nextTaskData.repeat_frequency,
-              repeat_unit: nextTaskData.repeat_unit,
-              repeat_days_of_week: nextTaskData.repeat_days_of_week,
-              repeat_times: nextTaskData.repeat_times,
-              repeat_end_type: nextTaskData.repeat_end_type,
-              repeat_end_date: nextTaskData.repeat_end_date,
-              repeat_end_count: nextTaskData.repeat_end_count,
-              repeat_completed_count: nextTaskData.repeat_completed_count,
-              repeat_parent_id: nextTaskData.repeat_parent_id,
-              repeat_series_id: nextTaskData.repeat_series_id,
-            };
-            
-            const { error: insertError } = await supabase
-              .from("tasks")
-              .insert([insertData]);
-            
-            if (insertError) {
-              console.error("Failed to create next occurrence:", insertError);
-            } else {
-              toast.info("Next occurrence scheduled");
-            }
-          }
-        }
       }
     }
+    
     fetchTasks();
   };
   const handleCheckInSubmit = async (response: string, mood?: string, energyLevel?: number) => {

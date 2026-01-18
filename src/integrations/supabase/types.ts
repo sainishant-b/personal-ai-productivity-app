@@ -139,6 +139,41 @@ export type Database = {
         }
         Relationships: []
       }
+      repeat_completions: {
+        Row: {
+          completed_at: string
+          completed_date: string
+          created_at: string
+          id: string
+          task_id: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string
+          completed_date: string
+          created_at?: string
+          id?: string
+          task_id: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string
+          completed_date?: string
+          created_at?: string
+          id?: string
+          task_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "repeat_completions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subtasks: {
         Row: {
           completed: boolean
@@ -230,15 +265,14 @@ export type Database = {
           notes: string | null
           priority: string
           progress: number
-          repeat_completed_count: number | null
           repeat_days_of_week: number[] | null
           repeat_enabled: boolean
           repeat_end_count: number | null
           repeat_end_date: string | null
           repeat_end_type: string | null
           repeat_frequency: number | null
-          repeat_parent_id: string | null
-          repeat_series_id: string | null
+          repeat_streak_current: number | null
+          repeat_streak_longest: number | null
           repeat_times: string[] | null
           repeat_unit: string | null
           status: string
@@ -256,15 +290,14 @@ export type Database = {
           notes?: string | null
           priority: string
           progress?: number
-          repeat_completed_count?: number | null
           repeat_days_of_week?: number[] | null
           repeat_enabled?: boolean
           repeat_end_count?: number | null
           repeat_end_date?: string | null
           repeat_end_type?: string | null
           repeat_frequency?: number | null
-          repeat_parent_id?: string | null
-          repeat_series_id?: string | null
+          repeat_streak_current?: number | null
+          repeat_streak_longest?: number | null
           repeat_times?: string[] | null
           repeat_unit?: string | null
           status?: string
@@ -282,15 +315,14 @@ export type Database = {
           notes?: string | null
           priority?: string
           progress?: number
-          repeat_completed_count?: number | null
           repeat_days_of_week?: number[] | null
           repeat_enabled?: boolean
           repeat_end_count?: number | null
           repeat_end_date?: string | null
           repeat_end_type?: string | null
           repeat_frequency?: number | null
-          repeat_parent_id?: string | null
-          repeat_series_id?: string | null
+          repeat_streak_current?: number | null
+          repeat_streak_longest?: number | null
           repeat_times?: string[] | null
           repeat_unit?: string | null
           status?: string
