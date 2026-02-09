@@ -133,6 +133,8 @@ export type Database = {
           longest_streak: number
           name: string | null
           timezone: string
+          total_ai_rating: number
+          total_proofs_submitted: number
           work_hours_end: string
           work_hours_start: string
         }
@@ -150,6 +152,8 @@ export type Database = {
           longest_streak?: number
           name?: string | null
           timezone?: string
+          total_ai_rating?: number
+          total_proofs_submitted?: number
           work_hours_end?: string
           work_hours_start?: string
         }
@@ -167,6 +171,8 @@ export type Database = {
           longest_streak?: number
           name?: string | null
           timezone?: string
+          total_ai_rating?: number
+          total_proofs_submitted?: number
           work_hours_end?: string
           work_hours_start?: string
         }
@@ -309,6 +315,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "task_history_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_proofs: {
+        Row: {
+          ai_feedback: string | null
+          ai_rating: number | null
+          created_at: string
+          id: string
+          image_url: string
+          task_id: string
+          user_id: string
+        }
+        Insert: {
+          ai_feedback?: string | null
+          ai_rating?: number | null
+          created_at?: string
+          id?: string
+          image_url: string
+          task_id: string
+          user_id: string
+        }
+        Update: {
+          ai_feedback?: string | null
+          ai_rating?: number | null
+          created_at?: string
+          id?: string
+          image_url?: string
+          task_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_proofs_task_id_fkey"
             columns: ["task_id"]
             isOneToOne: false
             referencedRelation: "tasks"
