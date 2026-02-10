@@ -11,3 +11,12 @@ verify_jwt = false
 
 [functions.scheduled-notifications]
 verify_jwt = false
+
+[functions.validate-task-proof]
+verify_jwt = false
+
+[functions.verify-task-proof]
+verify_jwt = false
+
+[functions.ai-calendar-schedule]
+verify_jwt = false
