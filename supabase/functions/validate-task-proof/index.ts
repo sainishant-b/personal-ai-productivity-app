@@ -37,12 +37,18 @@ serve(async (req) => {
       );
     }
 
-    // Fetch the image and convert to base64 for Gemini
+    // Fetch the image and convert to base64 for Gemini (chunked to avoid stack overflow)
     const imageResponse = await fetch(imageUrl);
     if (!imageResponse.ok) throw new Error("Failed to fetch uploaded image");
     const imageBuffer = await imageResponse.arrayBuffer();
     const uint8Array = new Uint8Array(imageBuffer);
-    const base64Image = btoa(String.fromCharCode(...uint8Array));
+    let binary = "";
+    const chunkSize = 8192;
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      const chunk = uint8Array.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    const base64Image = btoa(binary);
     const mimeType = imageResponse.headers.get("content-type") || "image/jpeg";
 
     // Call Gemini via Lovable Gateway
